@@ -80,6 +80,9 @@ enum
 	NavMeshArea_X2,
 	NavMeshArea_Y2,
 	NavMeshArea_Z2,
+	NavMeshArea_CenterX,
+	NavMeshArea_CenterY,
+	NavMeshArea_CenterZ,
 	NavMeshArea_NECornerZ,
 	NavMeshArea_SWCornerZ,
 	NavMeshArea_Connections,
@@ -97,12 +100,17 @@ enum
 	NavMeshArea_ParentHow,
 	NavMeshArea_CostSoFar,
 	NavMeshArea_TotalCost,
+	NavMeshArea_Marker,
+	NavMeshArea_OpenMarker,
+	NavMeshArea_PrevOpenIndex,
+	NavMeshArea_NextOpenIndex,
+	NavMeshArea_PathLengthSoFar,
 	NavMeshArea_MaxStats
 };
 
 enum
 {
-	NavMeshConnection_AreaID = 0,
+	NavMeshConnection_AreaIndex = 0,
 	NavMeshConnection_Direction,
 	NavMeshConnection_MaxStats
 };
@@ -136,7 +144,7 @@ enum
 
 enum
 {
-	NavMeshLadderConnection_ID = 0,
+	NavMeshLadderConnection_LadderIndex = 0,
 	NavMeshLadderConnection_Direction,
 	NavMeshLadderConnection_MaxStats
 };
@@ -150,7 +158,7 @@ enum
 
 enum
 {
-	NavMeshVisibleArea_ID = 0,
+	NavMeshVisibleArea_Index = 0,
 	NavMeshVisibleArea_Attributes,
 	NavMeshVisibleArea_MaxStats
 };
@@ -167,11 +175,11 @@ enum
 	NavMeshLadder_BottomY,
 	NavMeshLadder_BottomZ,
 	NavMeshLadder_Direction,
-	NavMeshLadder_TopForwardAreaID,
-	NavMeshLadder_TopLeftAreaID,
-	NavMeshLadder_TopRightAreaID,
-	NavMeshLadder_TopBehindAreaID,
-	NavMeshLadder_BottomAreaID,
+	NavMeshLadder_TopForwardAreaIndex,
+	NavMeshLadder_TopLeftAreaIndex,
+	NavMeshLadder_TopRightAreaIndex,
+	NavMeshLadder_TopBehindAreaIndex,
+	NavMeshLadder_BottomAreaIndex,
 	NavMeshLadder_MaxStats
 };
 
@@ -195,53 +203,53 @@ native Handle:NavMesh_GetAreas();
 native Handle:NavMesh_GetLadders();
 
 
-native bool:NavMesh_BuildPath(iStartAreaID, iGoalAreaID, Float:flGoalPos[3], Function:iCostFunctor, iClosestAreaID=-1);
+native bool:NavMesh_BuildPath(iStartAreaIndex, iGoalAreaIndex, Float:flGoalPos[3], Function:iCostFunctor, &iClosestAreaIndex=-1, Float:flMaxPathLength=0.0);
 
 
-native NavMeshArea_GetFlags(iAreaID);
+native NavMeshArea_GetFlags(iAreaIndex);
 
-native bool:NavMeshArea_GetCenter(iAreaID, Float:flBuffer[3]);
+native bool:NavMeshArea_GetCenter(iAreaIndex, Float:flBuffer[3]);
 
-native bool:NavMeshArea_GetAdjacentList(iAreaID, iDirection, Handle:hList);
+native Handle:NavMeshArea_GetAdjacentList(iAreaIndex, iDirection);
 
-native bool:NavMeshArea_GetLadderList(iAreaID, iLadderDirection, Handle:hList);
+native Handle:NavMeshArea_GetLadderList(iAreaIndex, iLadderDirection);
 
-native NavMeshArea_GetTotalCost(iAreaID);
+native NavMeshArea_GetTotalCost(iAreaIndex);
 
-native NavMeshArea_GetCostSoFar(iAreaID);
+native NavMeshArea_GetCostSoFar(iAreaIndex);
 
-native NavMeshArea_GetParent(iAreaID);
+native NavMeshArea_GetParent(iAreaIndex);
 
-native NavMeshArea_GetParentHow(iAreaID);
+native NavMeshArea_GetParentHow(iAreaIndex);
 
-native NavMeshArea_SetParent(iAreaID, iParentAreaID);
+native NavMeshArea_SetParent(iAreaIndex, iParentAreaID);
 
-native NavMeshArea_SetParentHow(iAreaID, iParentHow);
+native NavMeshArea_SetParentHow(iAreaIndex, iParentHow);
 
-native bool:NavMeshArea_GetExtentLow(iAreaID, Float:flBuffer[3]);
+native bool:NavMeshArea_GetExtentLow(iAreaIndex, Float:flBuffer[3]);
 
-native bool:NavMeshArea_GetExtentHigh(iAreaID, Float:flBuffer[3]);
+native bool:NavMeshArea_GetExtentHigh(iAreaIndex, Float:flBuffer[3]);
 
-native bool:NavMeshArea_IsOverlappingPoint(iAreaID, const Float:flPos[3]);
+native bool:NavMeshArea_IsOverlappingPoint(iAreaIndex, const Float:flPos[3], Float:flTolerance);
 
-native bool:NavMeshArea_IsOverlappingArea(iAreaID, iTargetAreaID);
+native bool:NavMeshArea_IsOverlappingArea(iAreaIndex, iTargetAreaID);
 
-native Float:NavMeshArea_GetNECornerZ(iAreaID);
+native Float:NavMeshArea_GetNECornerZ(iAreaIndex);
 
-native Float:NavMeshArea_GetSWCornerZ(iAreaID);
+native Float:NavMeshArea_GetSWCornerZ(iAreaIndex);
 
-native Float:NavMeshArea_GetZ(iAreaID, const Float:flPos[3]);
+native Float:NavMeshArea_GetZ(iAreaIndex, const Float:flPos[3]);
 
-native bool:NavMeshArea_Contains(iAreaID, const Float:flPos[3]);
-
-
-native Float:NavMeshLadder_GetLength(iAreaID);
+native bool:NavMeshArea_Contains(iAreaIndex, const Float:flPos[3]);
 
 
-// Shortest-path cost functor for NavMesh_BuildPath
-public NavMeshShortestPathCost(iAreaID, iFromAreaID, iLadderID)
+native Float:NavMeshLadder_GetLength(iLadderID);
+
+
+// Shortest-path cost functor for NavMeshBuildPath
+public NavMeshShortestPathCost(iAreaIndex, iFromAreaIndex, iLadderIndex)
 {
-	if (iFromAreaID == -1)
+	if (iFromAreaIndex == -1)
 	{
 		return 0;
 	}
@@ -249,23 +257,23 @@ public NavMeshShortestPathCost(iAreaID, iFromAreaID, iLadderID)
 	{
 		new iDist;
 		
-		if (iLadderID != -1)
+		if (iLadderIndex != -1)
 		{
-			iDist = RoundFloat(NavMeshLadder_GetLength(iLadderID));
+			iDist = RoundFloat(NavMeshLadder_GetLength(iLadderIndex));
 		}
 		else
 		{
 			decl Float:flAreaCenter[3], Float:flFromAreaCenter[3];
-			NavMeshArea_GetCenter(iAreaID, flAreaCenter);
-			NavMeshArea_GetCenter(iFromAreaID, flFromAreaCenter);
+			NavMeshArea_GetCenter(iAreaIndex, flAreaCenter);
+			NavMeshArea_GetCenter(iFromAreaIndex, flFromAreaCenter);
 			
 			iDist = RoundFloat(GetVectorDistance(flAreaCenter, flFromAreaCenter));
 		}
 		
-		new iCost = iDist + NavMeshArea_GetCostSoFar(iFromAreaID);
+		new iCost = iDist + NavMeshArea_GetCostSoFar(iFromAreaIndex);
 		
-		new iAreaFlags = NavMeshArea_GetFlags(iAreaID);
-		if (iAreaFlags & NAV_MESH_CROUCH) iCost += 2;
+		new iAreaFlags = NavMeshArea_GetFlags(iAreaIndex);
+		if (iAreaFlags & NAV_MESH_CROUCH) iCost += 20;
 		if (iAreaFlags & NAV_MESH_JUMP) iCost += (5 * iDist);
 		
 		return iCost;
