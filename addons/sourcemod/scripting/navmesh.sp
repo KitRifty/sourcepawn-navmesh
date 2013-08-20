@@ -51,6 +51,14 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	CreateNative("NavMeshArea_SetParent", Native_NavMeshAreaSetParent);
 	CreateNative("NavMeshArea_SetParentHow", Native_NavMeshAreaSetParentHow);
 	CreateNative("NavMeshArea_GetCostSoFar", Native_NavMeshAreaGetCostSoFar);
+	CreateNative("NavMeshArea_GetExtentLow", Native_NavMeshAreaGetExtentLow);
+	CreateNative("NavMeshArea_GetExtentHigh", Native_NavMeshAreaGetExtentHigh);
+	CreateNative("NavMeshArea_IsOverlappingPoint", Native_NavMeshAreaIsOverlappingPoint);
+	CreateNative("NavMeshArea_IsOverlappingArea", Native_NavMeshAreaIsOverlappingArea);
+	CreateNative("NavMeshArea_GetNECornerZ", Native_NavMeshAreaGetNECornerZ);
+	CreateNative("NavMeshArea_GetSWCornerZ", Native_NavMeshAreaGetSWCornerZ);
+	CreateNative("NavMeshArea_GetZ", Native_NavMeshAreaGetZ);
+	CreateNative("NavMeshArea_Contains", Native_NavMeshAreaContains);
 	
 	CreateNative("NavMeshLadder_GetLength", Native_NavMeshLadderGetLength);
 }
@@ -963,16 +971,11 @@ stock bool:NavMeshAreaGetCenter(iAreaID, Float:flBuffer[3])
 	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
 	if (hAreas == INVALID_HANDLE) return false;
 	
-	new iAreaIndex = FindValueInArray(hAreas, iAreaID);
-	if (iAreaIndex == -1) return false;
+	if (FindValueInArray(hAreas, iAreaID) == -1) return false;
 	
 	decl Float:flExtentLow[3], Float:flExtentHigh[3];
-	flExtentLow[0] = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_X1);
-	flExtentLow[1] = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_Y1);
-	flExtentLow[2] = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_Z1);
-	flExtentHigh[0] = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_X2);
-	flExtentHigh[1] = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_Y2);
-	flExtentHigh[2] = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_Z2);
+	NavMeshAreaGetExtentLow(iAreaID, flExtentLow);
+	NavMeshAreaGetExtentHigh(iAreaID, flExtentHigh);
 	
 	for (new i = 0; i < 3; i++) flBuffer[i] = (flExtentLow[i] + flExtentHigh[i]) / 2.0;
 	
@@ -1107,6 +1110,194 @@ stock NavMeshAreaSetParentHow(iAreaID, iParentHow)
 	if (iAreaIndex == -1) return;
 	
 	SetArrayCell(hAreas, iAreaIndex, iParentHow, NavMeshArea_ParentHow);
+}
+
+stock bool:NavMeshAreaGetExtentLow(iAreaID, Float:flBuffer[3])
+{
+	if (!g_bNavMeshBuilt) return false;
+
+	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
+	if (hAreas == INVALID_HANDLE) return false;
+	
+	new iAreaIndex = FindValueInArray(hAreas, iAreaID);
+	if (iAreaIndex == -1) return false;
+	
+	flBuffer[0] = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_X1);
+	flBuffer[1] = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_Y1);
+	flBuffer[2] = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_Z1);
+	return true;
+}
+
+stock bool:NavMeshAreaGetExtentHigh(iAreaID, Float:flBuffer[3])
+{
+	if (!g_bNavMeshBuilt) return false;
+
+	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
+	if (hAreas == INVALID_HANDLE) return false;
+	
+	new iAreaIndex = FindValueInArray(hAreas, iAreaID);
+	if (iAreaIndex == -1) return false;
+	
+	flBuffer[0] = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_X2);
+	flBuffer[1] = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_Y2);
+	flBuffer[2] = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_Z2);
+	return true;
+}
+
+stock bool:NavMeshAreaIsOverlappingPoint(iAreaID, const Float:flPos[3], Float:flTolerance)
+{
+	if (!g_bNavMeshBuilt) return false;
+
+	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
+	if (hAreas == INVALID_HANDLE) return false;
+	
+	if (FindValueInArray(hAreas, iAreaID) == -1) return false;
+	
+	decl Float:flExtentLow[3], Float:flExtentHigh[3];
+	NavMeshAreaGetExtentLow(iAreaID, flExtentLow);
+	NavMeshAreaGetExtentHigh(iAreaID, flExtentHigh);
+	
+	if (flPos[0] + flTolerance >= flExtentLow[0] &&
+		flPos[0] - flTolerance <= flExtentHigh[0] &&
+		flPos[1] + flTolerance >= flExtentLow[1] &&
+		flPos[1] - flTolerance <= flExtentHigh[1])
+	{
+		return true;
+	}
+	
+	return false;
+}
+
+stock bool:NavMeshAreaIsOverlappingArea(iAreaID, iTargetAreaID)
+{
+	if (!g_bNavMeshBuilt) return false;
+
+	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
+	if (hAreas == INVALID_HANDLE) return false;
+	
+	if (FindValueInArray(hAreas, iAreaID) == -1) return false;
+	
+	if (FindValueInArray(hAreas, iTargetAreaID) == -1) return false;
+	
+	decl Float:flExtentLow[3], Float:flExtentHigh[3];
+	NavMeshAreaGetExtentLow(iAreaID, flExtentLow);
+	NavMeshAreaGetExtentHigh(iAreaID, flExtentHigh);
+	
+	decl Float:flTargetExtentLow[3], Float:flTargetExtentHigh[3];
+	NavMeshAreaGetExtentLow(iTargetAreaID, flTargetExtentLow);
+	NavMeshAreaGetExtentHigh(iTargetAreaID, flTargetExtentHigh);
+	
+	if (flTargetExtentLow[0] < flExtentHigh[0] &&
+		flTargetExtentHigh[0] > flExtentLow[0] &&
+		flTargetExtentLow[1] < flExtentHigh[1] &&
+		flTargetExtentHigh[1] > flExtentLow[1])
+	{
+		return true;
+	}
+	
+	return false;
+}
+
+stock Float:NavMeshAreaGetNECornerZ(iAreaID)
+{
+	if (!g_bNavMeshBuilt) return 0.0;
+
+	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
+	if (hAreas == INVALID_HANDLE) return 0.0;
+	
+	new iAreaIndex = FindValueInArray(hAreas, iAreaID);
+	if (iAreaIndex == -1) return 0.0;
+	
+	return Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_NECornerZ);
+}
+
+stock Float:NavMeshAreaGetSWCornerZ(iAreaID)
+{
+	if (!g_bNavMeshBuilt) return 0.0;
+
+	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
+	if (hAreas == INVALID_HANDLE) return 0.0;
+	
+	new iAreaIndex = FindValueInArray(hAreas, iAreaID);
+	if (iAreaIndex == -1) return 0.0;
+	
+	return Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_SWCornerZ);
+}
+
+stock Float:NavMeshAreaGetZ(iAreaID, const Float:flPos[3])
+{
+	if (!g_bNavMeshBuilt) return 0.0;
+
+	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
+	if (hAreas == INVALID_HANDLE) return 0.0;
+	
+	if (FindValueInArray(hAreas, iAreaID) == -1) return 0.0;
+	
+	decl Float:flExtentLow[3], Float:flExtentHigh[3];
+	NavMeshAreaGetExtentLow(iAreaID, flExtentLow);
+	NavMeshAreaGetExtentHigh(iAreaID, flExtentHigh);
+	
+	new Float:dx = flExtentHigh[0] - flExtentLow[0];
+	new Float:dy = flExtentHigh[1] - flExtentLow[1];
+	
+	new Float:flNEZ = NavMeshAreaGetNECornerZ(iAreaID);
+	
+	if (dx == 0.0 || dy == 0.0)
+	{
+		return flNEZ;
+	}
+	
+	new Float:u = (flPos[0] - flExtentLow[0]) / dx;
+	new Float:v = (flPos[1] - flExtentLow[1]) / dy;
+	
+	if (u < 0.0) u = 0.0;
+	else if (u > 1.0) u = 1.0;
+	
+	if (v < 0.0) v = 0.0;
+	else if (v > 1.0) v = 1.0;
+	
+	new Float:flSWZ = NavMeshAreaGetSWCornerZ(iAreaID);
+	
+	new Float:flNorthZ = flExtentLow[2] + (u * (flNEZ - flExtentLow[2]));
+	new Float:flSouthZ = flSWZ + (u * (flExtentHigh[2] - flSWZ));
+	
+	return flNorthZ + (v * (flSouthZ - flNorthZ));
+}
+
+stock bool:NavMeshAreaContains(iAreaID, const Float:flPos[3])
+{
+	if (!g_bNavMeshBuilt) return false;
+	
+	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
+	if (hAreas == INVALID_HANDLE) return false;
+	
+	new iAreaIndex = FindValueInArray(hAreas, iAreaID);
+	if (iAreaIndex == -1) return false;
+	
+	if (!NavMeshAreaIsOverlappingPoint(iAreaID, flPos, 0.0)) return false;
+	
+	new Float:flMyZ = NavMeshAreaGetZ(iAreaID, flPos);
+	
+	if (flMyZ > flPos[2]) return false;
+	
+	for (new i = 0, iSize = GetArraySize(hAreas); i < iSize; i++)
+	{
+		if (i == iAreaIndex) continue;
+		
+		new iTempAreaID = GetArrayCell(hAreas, i);
+		
+		if (!NavMeshAreaIsOverlappingArea(iAreaID, iTempAreaID)) continue;
+		
+		new Float:flTheirZ = NavMeshAreaGetZ(iTempAreaID, flPos);
+		if (flTheirZ > flPos[2]) continue;
+		
+		if (flTheirZ > flMyZ)
+		{
+			return false;
+		}
+	}
+	
+	return true;
 }
 
 stock Float:NavMeshLadderGetLength(iLadderID)
@@ -1286,6 +1477,69 @@ public Native_NavMeshAreaSetParent(Handle:plugin, numParams)
 public Native_NavMeshAreaSetParentHow(Handle:plugin, numParams)
 {
 	NavMeshAreaSetParentHow(GetNativeCell(1), GetNativeCell(2));
+}
+
+public Native_NavMeshAreaGetExtentLow(Handle:plugin, numParams)
+{
+	decl Float:flExtent[3];
+	if (NavMeshAreaGetExtentLow(GetNativeCell(1), flExtent))
+	{
+		SetNativeArray(2, flExtent, 3);
+		return true;
+	}
+	
+	return false;
+}
+
+public Native_NavMeshAreaGetExtentHigh(Handle:plugin, numParams)
+{
+	decl Float:flExtent[3];
+	if (NavMeshAreaGetExtentHigh(GetNativeCell(1), flExtent))
+	{
+		SetNativeArray(2, flExtent, 3);
+		return true;
+	}
+	
+	return false;
+}
+
+public Native_NavMeshAreaIsOverlappingPoint(Handle:plugin, numParams)
+{
+	decl Float:flPos[3];
+	GetNativeArray(2, flPos, 3);
+	
+	return NavMeshAreaIsOverlappingPoint(GetNativeCell(1), flPos, Float:GetNativeCell(3));
+}
+
+public Native_NavMeshAreaIsOverlappingArea(Handle:plugin, numParams)
+{
+	return NavMeshAreaIsOverlappingArea(GetNativeCell(1), GetNativeCell(2));
+}
+
+public Native_NavMeshAreaGetNECornerZ(Handle:plugin, numParams)
+{
+	return _:NavMeshAreaGetNECornerZ(GetNativeCell(1));
+}
+
+public Native_NavMeshAreaGetSWCornerZ(Handle:plugin, numParams)
+{
+	return _:NavMeshAreaGetSWCornerZ(GetNativeCell(1));
+}
+
+public Native_NavMeshAreaGetZ(Handle:plugin, numParams)
+{
+	decl Float:flPos[3];
+	GetNativeArray(2, flPos, 3);
+
+	return _:NavMeshAreaGetZ(GetNativeCell(1), flPos);
+}
+
+public Native_NavMeshAreaContains(Handle:plugin, numParams)
+{
+	decl Float:flPos[3];
+	GetNativeArray(2, flPos, 3);
+
+	return NavMeshAreaContains(GetNativeCell(1), flPos);
 }
 
 public Native_NavMeshLadderGetLength(Handle:plugin, numParams)

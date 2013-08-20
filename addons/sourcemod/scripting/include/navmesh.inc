@@ -219,6 +219,22 @@ native NavMeshArea_SetParent(iAreaID, iParentAreaID);
 
 native NavMeshArea_SetParentHow(iAreaID, iParentHow);
 
+native bool:NavMeshArea_GetExtentLow(iAreaID, Float:flBuffer[3]);
+
+native bool:NavMeshArea_GetExtentHigh(iAreaID, Float:flBuffer[3]);
+
+native bool:NavMeshArea_IsOverlappingPoint(iAreaID, const Float:flPos[3]);
+
+native bool:NavMeshArea_IsOverlappingArea(iAreaID, iTargetAreaID);
+
+native Float:NavMeshArea_GetNECornerZ(iAreaID);
+
+native Float:NavMeshArea_GetSWCornerZ(iAreaID);
+
+native Float:NavMeshArea_GetZ(iAreaID, const Float:flPos[3]);
+
+native bool:NavMeshArea_Contains(iAreaID, const Float:flPos[3]);
+
 
 native Float:NavMeshLadder_GetLength(iAreaID);
 
