@@ -3,7 +3,6 @@
 #endif
 #define _navmesh_included
 
-
 enum
 {
 	NAV_DIR_NORTH = 0,
@@ -196,20 +195,20 @@ native Handle:NavMesh_GetAreas();
 native Handle:NavMesh_GetLadders();
 
 
-native Handle:NavMesh_BuildPath(iStartAreaID, iGoalAreaID, Float:flGoalPos[3], Function:iCostFunctor, iClosestAreaID=-1);
+native bool:NavMesh_BuildPath(iStartAreaID, iGoalAreaID, Float:flGoalPos[3], Function:iCostFunctor, iClosestAreaID=-1);
 
 
 native NavMeshArea_GetFlags(iAreaID);
 
 native bool:NavMeshArea_GetCenter(iAreaID, Float:flBuffer[3]);
 
-native Handle:NavMeshArea_GetAdjacentList(iAreaID);
+native bool:NavMeshArea_GetAdjacentList(iAreaID, iDirection, Handle:hList);
 
-native Handle:NavMeshArea_GetLadderList(iAreaID);
+native bool:NavMeshArea_GetLadderList(iAreaID, iLadderDirection, Handle:hList);
 
-native Float:NavMeshArea_GetTotalCost(iAreaID);
+native NavMeshArea_GetTotalCost(iAreaID);
 
-native Float:NavMeshArea_GetCostSoFar(iAreaID);
+native NavMeshArea_GetCostSoFar(iAreaID);
 
 native NavMeshArea_GetParent(iAreaID);
 
@@ -240,19 +239,19 @@ native Float:NavMeshLadder_GetLength(iAreaID);
 
 
 // Shortest-path cost functor for NavMesh_BuildPath
-public Float:NavMeshShortestPathCost(iAreaID, iFromAreaID, iLadderID)
+public NavMeshShortestPathCost(iAreaID, iFromAreaID, iLadderID)
 {
 	if (iFromAreaID == -1)
 	{
-		return 0.0;
+		return 0;
 	}
 	else
 	{
-		new Float:flDist;
+		new iDist;
 		
 		if (iLadderID != -1)
 		{
-			flDist = NavMeshLadder_GetLength(iLadderID);
+			iDist = RoundFloat(NavMeshLadder_GetLength(iLadderID));
 		}
 		else
 		{
@@ -260,16 +259,16 @@ public Float:NavMeshShortestPathCost(iAreaID, iFromAreaID, iLadderID)
 			NavMeshArea_GetCenter(iAreaID, flAreaCenter);
 			NavMeshArea_GetCenter(iFromAreaID, flFromAreaCenter);
 			
-			flDist = GetVectorDistance(flAreaCenter, flFromAreaCenter);
+			iDist = RoundFloat(GetVectorDistance(flAreaCenter, flFromAreaCenter));
 		}
 		
-		new Float:flCost = flDist + NavMeshArea_GetCostSoFar(iFromAreaID);
+		new iCost = iDist + NavMeshArea_GetCostSoFar(iFromAreaID);
 		
 		new iAreaFlags = NavMeshArea_GetFlags(iAreaID);
-		if (iAreaFlags & NAV_MESH_CROUCH) flCost += 20.0;
-		if (iAreaFlags & NAV_MESH_JUMP) flCost += (5.0 * flDist);
+		if (iAreaFlags & NAV_MESH_CROUCH) iCost += 2;
+		if (iAreaFlags & NAV_MESH_JUMP) iCost += (5 * iDist);
 		
-		return flCost;
+		return iCost;
 	}
 }
 

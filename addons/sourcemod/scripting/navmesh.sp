@@ -20,7 +20,6 @@ public Plugin:myinfo =
 #define UNSIGNED_SHORT_BYTE_SIZE 2
 #define FLOAT_BYTE_SIZE 4
 
-
 new Handle:g_hNavMesh;
 new bool:g_bNavMeshBuilt = false;
 
@@ -100,6 +99,7 @@ public Event_NavAreaBlocked(Handle:event, const String:name[], bool:dB)
 bool:NavMeshBuildPath(iStartAreaID,
 	iGoalAreaID,
 	const Float:flGoalPos[3],
+	Handle:hPlugin,
 	Function:iCostFunction,
 	iClosestAreaID=-1)
 {
@@ -123,6 +123,8 @@ bool:NavMeshBuildPath(iStartAreaID,
 		return false;
 	}
 	
+	if (iStartAreaID == iGoalAreaID) return true;
+	
 	new iGoalAreaIndex = FindValueInArray(hAreas, iGoalAreaID);
 	if (iGoalAreaIndex == -1)
 	{
@@ -130,52 +132,39 @@ bool:NavMeshBuildPath(iStartAreaID,
 		return false;
 	}
 	
-	NavMeshAreaSetParent(iStartAreaID, -1);
-	NavMeshAreaSetParentHow(iStartAreaID, NUM_TRAVERSE_TYPES);
-	
-	if (iStartAreaID == iGoalAreaID)
-	{
-		NavMeshAreaSetParent(iGoalAreaID, -1);
-		NavMeshAreaSetParentHow(iGoalAreaID, NUM_TRAVERSE_TYPES);
-		return true;
-	}
+	SetArrayCell(hAreas, iStartAreaIndex, -1, NavMeshArea_Parent);
+	SetArrayCell(hAreas, iStartAreaIndex, NUM_TRAVERSE_TYPES, NavMeshArea_ParentHow);
 	
 	// Start the search.
-	static Handle:hOpenList = INVALID_HANDLE;
-	static Handle:hClosedList = INVALID_HANDLE;
-	
-	if (hOpenList == INVALID_HANDLE) hOpenList = CreateArray();
-	if (hClosedList == INVALID_HANDLE) hClosedList = CreateArray();
+	new Handle:hOpenList = CreateArray();
+	new Handle:hClosedList = CreateArray();
 	
 	// Start the search!
-	ClearArray(hOpenList);
-	ClearArray(hClosedList);
-	
 	decl Float:flStartAreaCenter[3];
 	NavMeshAreaGetCenter(iStartAreaID, flStartAreaCenter);
 	
 	SetArrayCell(hAreas, iStartAreaIndex, GetVectorDistance(flStartAreaCenter, flGoalPos), NavMeshArea_TotalCost);
 	
-	new Float:flInitCost;
+	new iInitCost;
 	
-	Call_StartFunction(INVALID_HANDLE, iCostFunction);
+	Call_StartFunction(hPlugin, iCostFunction);
 	Call_PushCell(iStartAreaID);
 	Call_PushCell(-1);
 	Call_PushCell(-1);
-	Call_Finish(flInitCost);
+	Call_Finish(iInitCost);
 	
-	if (flInitCost < 0.0) return false;
+	if (iInitCost < 0) return false;
 	
 	PushArrayCell(hOpenList, iStartAreaID);
 	
 	if (iClosestAreaID != -1) iClosestAreaID = iStartAreaID;
 	
-	new Float:flClosestAreaDist = Float:GetArrayCell(hAreas, iStartAreaIndex, NavMeshArea_TotalCost);
+	new iClosestAreaDist = GetArrayCell(hAreas, iStartAreaIndex, NavMeshArea_TotalCost);
 	
 	new Handle:hLadders = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Ladders);
 	
 	// Perform A* search.
-	while (GetArraySize(hOpenList))
+	while (GetArraySize(hOpenList) > 0)
 	{
 		new iAreaID = GetArrayCell(hOpenList, 0);
 		RemoveFromArray(hOpenList, 0);
@@ -190,16 +179,25 @@ bool:NavMeshBuildPath(iStartAreaID,
 				iClosestAreaID = iGoalAreaID;
 			}
 			
+			CloseHandle(hOpenList);
+			CloseHandle(hClosedList);
 			return true;
 		}
 		
+		static Handle:hFloorList = INVALID_HANDLE;
+		if (hFloorList == INVALID_HANDLE) hFloorList = CreateArray();
+		
 		new bool:bSearchFloor = true;
 		new iFloorDir = NAV_DIR_NORTH;
-		new Handle:hFloorList = NavMeshAreaGetAdjacentList(iAreaID, NAV_DIR_NORTH);
+		NavMeshAreaGetAdjacentList(iAreaID, NAV_DIR_NORTH, hFloorList);
+		new iFloorNum = GetArraySize(hFloorList);
 		new iFloorIter = 0;
 		
+		static Handle:hLadderList = INVALID_HANDLE;
+		if (hLadderList == INVALID_HANDLE) hLadderList = CreateArray();
+		
 		new bool:bLadderUp = true;
-		new Handle:hLadderList = INVALID_HANDLE;
+		new iLadderNum = 0;
 		new iLadderIter = 0;
 		new iLadderTopDir = 0;
 		
@@ -211,23 +209,26 @@ bool:NavMeshBuildPath(iStartAreaID,
 			
 			if (bSearchFloor)
 			{
-				if (hFloorList == INVALID_HANDLE || iFloorIter >= GetArraySize(hFloorList))
+				if (hFloorList == INVALID_HANDLE || iFloorIter >= iFloorNum)
 				{
 					iFloorDir++;
 					
 					if (iFloorDir == NAV_DIR_COUNT)
 					{
-						bSearchFloor = false;
-						if (hFloorList != INVALID_HANDLE) CloseHandle(hFloorList);
+						ClearArray(hFloorList);
 						
-						hLadderList = NavMeshAreaGetLadderList(iAreaID, NAV_LADDER_DIR_UP);
+						bSearchFloor = false;
+						iFloorNum = 0;
+						
+						NavMeshAreaGetLadderList(iAreaID, NAV_LADDER_DIR_UP, hLadderList);
 						iLadderIter = 0;
+						iLadderNum = GetArraySize(hLadderList);
 						iLadderTopDir = 0;
 					}
 					else
 					{
-						if (hFloorList != INVALID_HANDLE) CloseHandle(hFloorList);
-						hFloorList = NavMeshAreaGetAdjacentList(iAreaID, iFloorDir);
+						NavMeshAreaGetAdjacentList(iAreaID, iFloorDir, hFloorList);
+						iFloorNum = GetArraySize(hFloorList);
 						iFloorIter = 0;
 					}
 					
@@ -240,19 +241,18 @@ bool:NavMeshBuildPath(iStartAreaID,
 			}
 			else
 			{
-				if (hLadderList == INVALID_HANDLE || iLadderIter >= GetArraySize(hLadderList))
+				if (hLadderList == INVALID_HANDLE || iLadderIter >= iLadderNum)
 				{
 					if (!bLadderUp)
 					{
-						if (hLadderList != INVALID_HANDLE) CloseHandle(hLadderList);
-						
+						ClearArray(hLadderList);
 						break;
 					}
 					else
 					{
 						bLadderUp = false;
-						if (hLadderList != INVALID_HANDLE) CloseHandle(hLadderList);
-						hLadderList = NavMeshAreaGetLadderList(iAreaID, NAV_LADDER_DIR_DOWN);
+						NavMeshAreaGetLadderList(iAreaID, NAV_LADDER_DIR_DOWN, hLadderList);
+						iLadderNum = GetArraySize(hLadderList);
 						iLadderIter = 0;
 					}
 					
@@ -305,17 +305,18 @@ bool:NavMeshBuildPath(iStartAreaID,
 			
 			if (bool:GetArrayCell(hAreas, iNewAreaIndex, NavMeshArea_Blocked)) continue;
 			
-			new Float:flNewCostSoFar;
+			new iNewCostSoFar;
 			
-			Call_StartFunction(INVALID_HANDLE, iCostFunction);
+			Call_StartFunction(hPlugin, iCostFunction);
 			Call_PushCell(iNewAreaID);
 			Call_PushCell(iAreaID);
 			Call_PushCell(iLadderID);
-			Call_Finish(flNewCostSoFar);
+			Call_Finish(iNewCostSoFar);
 			
-			if (flNewCostSoFar < 0.0) continue;
+			if (iNewCostSoFar < 0) continue;
 			
-			if (Float:GetArrayCell(hAreas, iNewAreaIndex, NavMeshArea_CostSoFar) <= flNewCostSoFar)
+			if ((FindValueInArray(hOpenList, iNewAreaID) != -1 || FindValueInArray(hClosedList, iNewAreaID) != -1) &&
+				GetArrayCell(hAreas, iNewAreaIndex, NavMeshArea_CostSoFar) <= iNewCostSoFar)
 			{
 				continue;
 			}
@@ -324,31 +325,30 @@ bool:NavMeshBuildPath(iStartAreaID,
 				decl Float:flNewAreaCenter[3];
 				NavMeshAreaGetCenter(iNewAreaID, flNewAreaCenter);
 				
-				new Float:flNewCostRemaining = GetVectorDistance(flNewAreaCenter, flGoalPos);
+				new iNewCostRemaining = RoundFloat(GetVectorDistance(flNewAreaCenter, flGoalPos));
 				
-				if (iClosestAreaID != -1 && flNewCostRemaining < flClosestAreaDist)
+				if (iClosestAreaID != -1 && iNewCostRemaining < iClosestAreaDist)
 				{
 					iClosestAreaID = iNewAreaID;
-					flClosestAreaDist = flNewCostRemaining;
+					iClosestAreaDist = iNewCostRemaining;
 				}
 				
 				NavMeshAreaSetParent(iNewAreaID, iAreaID);
 				NavMeshAreaSetParentHow(iNewAreaID, iNavTraverseHow);
 				
-				SetArrayCell(hAreas, iNewAreaIndex, flNewCostSoFar + flNewCostRemaining, NavMeshArea_TotalCost);
+				SetArrayCell(hAreas, iNewAreaIndex, iNewCostSoFar, NavMeshArea_CostSoFar);
+				SetArrayCell(hAreas, iNewAreaIndex, iNewCostSoFar + iNewCostRemaining, NavMeshArea_TotalCost);
 				
 				new iClosedListIndex = FindValueInArray(hClosedList, iNewAreaID);
 				if (iClosedListIndex != -1) 
 				{
 					RemoveFromArray(hClosedList, iClosedListIndex);
-					
-					new iOpenListIndex = FindValueInArray(hOpenList, iNewAreaID);
-					if (iOpenListIndex == -1)
-					{
-						PushArrayCell(hOpenList, iNewAreaID);
-					}
-					
-					SortADTArrayCustom(hOpenList, SortNavMeshOpenList);
+				}
+				
+				new iOpenListIndex = FindValueInArray(hOpenList, iNewAreaID);
+				if (iOpenListIndex == -1)
+				{
+					PushArrayCell(hOpenList, iNewAreaID);
 				}
 			}
 		}
@@ -357,29 +357,9 @@ bool:NavMeshBuildPath(iStartAreaID,
 		if (iClosedListIndex == -1) PushArrayCell(hClosedList, iAreaID);
 	}
 	
+	CloseHandle(hOpenList);
+	CloseHandle(hClosedList);
 	return false;
-}
-
-public SortNavMeshOpenList(index1, index2, Handle:hOpenList, Handle:hndl)
-{
-	new iArea1ID = GetArrayCell(hOpenList, index1);
-	new Float:iArea1TotalCost = NavMeshAreaGetTotalCost(iArea1ID);
-	
-	new iArea2ID = GetArrayCell(hOpenList, index2);
-	new Float:iArea2TotalCost = NavMeshAreaGetTotalCost(iArea2ID);
-	
-	if (iArea1TotalCost < iArea2TotalCost)
-	{
-		return -1;
-	}
-	else if (iArea1TotalCost == iArea2TotalCost)
-	{	
-		return 0;
-	}
-	else
-	{
-		return 1;
-	}
 }
 
 bool:NavMeshLoad(const String:sMapName[])
@@ -810,8 +790,8 @@ bool:NavMeshLoad(const String:sMapName[])
 			SetArrayCell(hAreas, iIndex, unk01, NavMeshArea_unk01);
 			SetArrayCell(hAreas, iIndex, -1, NavMeshArea_Parent);
 			SetArrayCell(hAreas, iIndex, NUM_TRAVERSE_TYPES, NavMeshArea_ParentHow);
-			SetArrayCell(hAreas, iIndex, 0.0, NavMeshArea_TotalCost);
-			SetArrayCell(hAreas, iIndex, 0.0, NavMeshArea_CostSoFar);
+			SetArrayCell(hAreas, iIndex, 0, NavMeshArea_TotalCost);
+			SetArrayCell(hAreas, iIndex, 0, NavMeshArea_CostSoFar);
 			SetArrayCell(hAreas, iIndex, false, NavMeshArea_Blocked);
 		}
 	}
@@ -982,82 +962,82 @@ stock bool:NavMeshAreaGetCenter(iAreaID, Float:flBuffer[3])
 	return true;
 }
 
-stock Handle:NavMeshAreaGetAdjacentList(iAreaID, iNavDirection)
+stock bool:NavMeshAreaGetAdjacentList(iAreaID, iNavDirection, Handle:hList)
 {
-	if (!g_bNavMeshBuilt) return INVALID_HANDLE;
+	ClearArray(hList);
+	
+	if (!g_bNavMeshBuilt) return false;
 
 	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
-	if (hAreas == INVALID_HANDLE) return INVALID_HANDLE;
+	if (hAreas == INVALID_HANDLE) return false;
 	
 	new iAreaIndex = FindValueInArray(hAreas, iAreaID);
-	if (iAreaIndex == -1) return INVALID_HANDLE;
+	if (iAreaIndex == -1) return false;
 	
 	new Handle:hConnections = Handle:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_Connections);
-	if (hConnections == INVALID_HANDLE) return INVALID_HANDLE;
-	
-	new Handle:hAdjacentList = CreateArray();
+	if (hConnections == INVALID_HANDLE) return false;
 	
 	for (new i = 0, iSize = GetArraySize(hConnections); i < iSize; i++)
 	{
 		if (GetArrayCell(hConnections, i, NavMeshConnection_Direction) == iNavDirection)
 		{
-			PushArrayCell(hAdjacentList, GetArrayCell(hConnections, i, NavMeshConnection_AreaID));
+			PushArrayCell(hList, GetArrayCell(hConnections, i, NavMeshConnection_AreaID));
 		}
 	}
 	
-	return hAdjacentList;
+	return true;
 }
 
-stock Handle:NavMeshAreaGetLadderList(iAreaID, iLadderDir)
+stock bool:NavMeshAreaGetLadderList(iAreaID, iLadderDir, Handle:hList)
 {
-	if (!g_bNavMeshBuilt) return INVALID_HANDLE;
+	ClearArray(hList);
+
+	if (!g_bNavMeshBuilt) return false;
 
 	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
-	if (hAreas == INVALID_HANDLE) return INVALID_HANDLE;
+	if (hAreas == INVALID_HANDLE) return false;
 	
 	new iAreaIndex = FindValueInArray(hAreas, iAreaID);
-	if (iAreaIndex == -1) return INVALID_HANDLE;
+	if (iAreaIndex == -1) return false;
 	
 	new Handle:hConnections = Handle:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_LadderConnections);
-	if (hConnections == INVALID_HANDLE) return INVALID_HANDLE;
-	
-	new Handle:hLadderList = CreateArray();
+	if (hConnections == INVALID_HANDLE) return false;
 	
 	for (new i = 0, iSize = GetArraySize(hConnections); i < iSize; i++)
 	{
 		if (GetArrayCell(hConnections, i, NavMeshLadderConnection_Direction) == iLadderDir)
 		{
-			PushArrayCell(hLadderList, GetArrayCell(hConnections, i, NavMeshLadderConnection_ID));
+			PushArrayCell(hList, GetArrayCell(hConnections, i, NavMeshLadderConnection_ID));
 		}
 	}
 	
-	return hLadderList;
+	return true;
 }
 
-stock Float:NavMeshAreaGetTotalCost(iAreaID)
+stock NavMeshAreaGetTotalCost(iAreaID)
 {
-	if (!g_bNavMeshBuilt) return 0.0;
+	if (!g_bNavMeshBuilt) return 0;
 
 	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
-	if (hAreas == INVALID_HANDLE) return 0.0;
+	if (hAreas == INVALID_HANDLE) return 0;
 	
 	new iAreaIndex = FindValueInArray(hAreas, iAreaID);
-	if (iAreaIndex == -1) return 0.0;
+	if (iAreaIndex == -1) return 0;
 	
-	return Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_TotalCost);
+	return GetArrayCell(hAreas, iAreaIndex, NavMeshArea_TotalCost);
 }
 
-stock Float:NavMeshAreaGetCostSoFar(iAreaID)
+stock NavMeshAreaGetCostSoFar(iAreaID)
 {
-	if (!g_bNavMeshBuilt) return 0.0;
+	if (!g_bNavMeshBuilt) return 0;
 
 	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
-	if (hAreas == INVALID_HANDLE) return 0.0;
+	if (hAreas == INVALID_HANDLE) return 0;
 	
 	new iAreaIndex = FindValueInArray(hAreas, iAreaID);
-	if (iAreaIndex == -1) return 0.0;
+	if (iAreaIndex == -1) return 0;
 	
-	return Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_CostSoFar);
+	return GetArrayCell(hAreas, iAreaIndex, NavMeshArea_CostSoFar);
 }
 
 stock NavMeshAreaGetParent(iAreaID)
@@ -1418,6 +1398,7 @@ public Native_NavMeshBuildPath(Handle:plugin, numParams)
 	return NavMeshBuildPath(GetNativeCell(1), 
 		GetNativeCell(2), 
 		flGoalPos,
+		plugin,
 		Function:GetNativeCell(4),
 		GetNativeCell(5));
 }
@@ -1441,22 +1422,22 @@ public Native_NavMeshAreaGetCenter(Handle:plugin, numParams)
 
 public Native_NavMeshAreaGetAdjacentList(Handle:plugin, numParams)
 {
-	return _:NavMeshAreaGetAdjacentList(GetNativeCell(1), GetNativeCell(2));
+	return NavMeshAreaGetAdjacentList(GetNativeCell(1), GetNativeCell(2), Handle:GetNativeCell(3));
 }
 
 public Native_NavMeshAreaGetLadderList(Handle:plugin, numParams)
 {
-	return _:NavMeshAreaGetLadderList(GetNativeCell(1), GetNativeCell(2));
+	return NavMeshAreaGetLadderList(GetNativeCell(1), GetNativeCell(2), Handle:GetNativeCell(3));
 }
 
 public Native_NavMeshAreaGetTotalCost(Handle:plugin, numParams)
 {
-	return _:NavMeshAreaGetTotalCost(GetNativeCell(1));
+	return NavMeshAreaGetTotalCost(GetNativeCell(1));
 }
 
 public Native_NavMeshAreaGetCostSoFar(Handle:plugin, numParams)
 {
-	return _:NavMeshAreaGetCostSoFar(GetNativeCell(1));
+	return NavMeshAreaGetCostSoFar(GetNativeCell(1));
 }
 
 public Native_NavMeshAreaGetParent(Handle:plugin, numParams)
