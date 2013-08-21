@@ -83,6 +83,8 @@ enum
 	NavMeshArea_CenterX,
 	NavMeshArea_CenterY,
 	NavMeshArea_CenterZ,
+	NavMeshArea_InvDxCorners,
+	NavMeshArea_InvDyCorners,
 	NavMeshArea_NECornerZ,
 	NavMeshArea_SWCornerZ,
 	NavMeshArea_Connections,
@@ -236,7 +238,13 @@ native Float:NavMeshArea_GetSWCornerZ(iAreaIndex);
 
 native Float:NavMeshArea_GetZ(iAreaIndex, const Float:flPos[3]);
 
+native Float:NavMeshArea_GetZFromXAndY(iAreaIndex, Float:flX, Float:flY);
+
 native bool:NavMeshArea_Contains(iAreaIndex, const Float:flPos[3]);
+
+native bool:NavMeshArea_ComputePortal(iAreaIndex, iAreaToIndex, iNavDirection, Float:flCenter[3], &Float:flHalfWidth);
+
+native bool:NavMeshArea_ComputeClosestPointInPortal(iAreaIndex, iAreaToIndex, iNavDirection, const Float:flFromPos[3], Float:flClosestPos[3]);
 
 
 native Float:NavMeshLadder_GetLength(iLadderID);

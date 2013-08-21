@@ -62,7 +62,10 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	CreateNative("NavMeshArea_GetNECornerZ", Native_NavMeshAreaGetNECornerZ);
 	CreateNative("NavMeshArea_GetSWCornerZ", Native_NavMeshAreaGetSWCornerZ);
 	CreateNative("NavMeshArea_GetZ", Native_NavMeshAreaGetZ);
+	CreateNative("NavMeshArea_GetZFromXAndY", Native_NavMeshAreaGetZFromXAndY);
 	CreateNative("NavMeshArea_Contains", Native_NavMeshAreaContains);
+	CreateNative("NavMeshArea_ComputePortal", Native_NavMeshAreaComputePortal);
+	CreateNative("NavMeshArea_ComputeClosestPointInPortal", Native_NavMeshAreaComputeClosestPointInPortal);
 	
 	CreateNative("NavMeshLadder_GetLength", Native_NavMeshLadderGetLength);
 }
@@ -768,16 +771,25 @@ bool:NavMeshLoad(const String:sMapName[])
 			
 			//LogMessage("Area extent: (%f, %f, %f), (%f, %f, %f)", x1, y1, z1, x2, y2, z2);
 			
-			ReadFileCell(hFile, _:flNECornerZ, FLOAT_BYTE_SIZE);
-			ReadFileCell(hFile, _:flSWCornerZ, FLOAT_BYTE_SIZE);
-			
-			//LogMessage("Corners: NW(%f), SW(%f)", flNECornerZ, flSWCornerZ);
-			
 			// Cache the center position for faster performance.
 			decl Float:flAreaCenter[3];
 			flAreaCenter[0] = (x1 + x2) / 2.0;
 			flAreaCenter[1] = (y1 + y2) / 2.0;
 			flAreaCenter[2] = (z1 + z2) / 2.0;
+			
+			new Float:flInvDxCorners = 0.0; 
+			new Float:flInvDyCorners = 0.0;
+			
+			if ((x2 - x1) > 0.0 && (y2 - y1) > 0.0)
+			{
+				flInvDxCorners = 1.0 / (x2 - x1);
+				flInvDyCorners = 1.0 / (y2 - y1);
+			}
+			
+			ReadFileCell(hFile, _:flNECornerZ, FLOAT_BYTE_SIZE);
+			ReadFileCell(hFile, _:flSWCornerZ, FLOAT_BYTE_SIZE);
+			
+			//LogMessage("Corners: NW(%f), SW(%f)", flNECornerZ, flSWCornerZ);
 			
 			// Find connections.
 			for (new iDirection = 0; iDirection < NAV_DIR_COUNT; iDirection++)
@@ -1032,6 +1044,8 @@ bool:NavMeshLoad(const String:sMapName[])
 			SetArrayCell(hAreas, iIndex, flAreaCenter[0], NavMeshArea_CenterX);
 			SetArrayCell(hAreas, iIndex, flAreaCenter[1], NavMeshArea_CenterY);
 			SetArrayCell(hAreas, iIndex, flAreaCenter[2], NavMeshArea_CenterZ);
+			SetArrayCell(hAreas, iIndex, flInvDxCorners, NavMeshArea_InvDxCorners);
+			SetArrayCell(hAreas, iIndex, flInvDyCorners, NavMeshArea_InvDyCorners);
 			SetArrayCell(hAreas, iIndex, flNECornerZ, NavMeshArea_NECornerZ);
 			SetArrayCell(hAreas, iIndex, flSWCornerZ, NavMeshArea_SWCornerZ);
 			SetArrayCell(hAreas, iIndex, hConnections, NavMeshArea_Connections);
@@ -1516,6 +1530,44 @@ stock Float:NavMeshAreaGetZ(iAreaIndex, const Float:flPos[3])
 	return flNorthZ + (v * (flSouthZ - flNorthZ));
 }
 
+stock Float:NavMeshAreaGetZFromXAndY(iAreaIndex, Float:x, Float:y)
+{
+	if (!g_bNavMeshBuilt) return 0.0;
+
+	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
+	if (hAreas == INVALID_HANDLE) return 0.0;
+	
+	new Float:flInvDxCorners = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_InvDxCorners);
+	new Float:flInvDyCorners = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_InvDyCorners);
+	
+	new Float:flNECornerZ = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_NECornerZ);
+	
+	if (flInvDxCorners == 0.0 || flInvDyCorners == 0.0)
+	{
+		return flNECornerZ;
+	}
+	
+	decl Float:flExtentLow[3], Float:flExtentHigh[3];
+	NavMeshAreaGetExtentLow(iAreaIndex, flExtentLow);
+	NavMeshAreaGetExtentHigh(iAreaIndex, flExtentHigh);
+
+	new Float:u = (x - flExtentLow[0]) * flInvDxCorners;
+	new Float:v = (y - flExtentLow[1]) * flInvDyCorners;
+	
+	u = u >= 0.0 ? u : 0.0;
+	u = u >= 1.0 ? 1.0 : u;
+	
+	v = v >= 0.0 ? v : 0.0;
+	v = v >= 1.0 ? v : 1.0;
+	
+	new Float:flSWCornerZ = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_SWCornerZ);
+	
+	new Float:flNorthZ = flExtentLow[2] + u * (flNECornerZ - flExtentLow[2]);
+	new Float:flSouthZ = flSWCornerZ + u * (flExtentHigh[2] - flSWCornerZ);
+	
+	return flNorthZ + v * (flSouthZ - flNorthZ);
+}
+
 stock bool:NavMeshAreaContains(iAreaIndex, const Float:flPos[3])
 {
 	if (!g_bNavMeshBuilt) return false;
@@ -1545,6 +1597,181 @@ stock bool:NavMeshAreaContains(iAreaIndex, const Float:flPos[3])
 	}
 	
 	return true;
+}
+
+stock bool:NavMeshAreaComputePortal(iAreaIndex, iAreaToIndex, iNavDirection, Float:flCenter[3], &Float:flHalfWidth)
+{
+	if (!g_bNavMeshBuilt) return false;
+	
+	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
+	if (hAreas == INVALID_HANDLE) return false;
+
+	decl Float:flAreaExtentLow[3], Float:flAreaExtentHigh[3];
+	NavMeshAreaGetExtentLow(iAreaIndex, flAreaExtentLow);
+	NavMeshAreaGetExtentHigh(iAreaIndex, flAreaExtentHigh);
+	
+	decl Float:flAreaToExtentLow[3], Float:flAreaToExtentHigh[3];
+	NavMeshAreaGetExtentLow(iAreaToIndex, flAreaToExtentLow);
+	NavMeshAreaGetExtentHigh(iAreaToIndex, flAreaToExtentHigh);
+	
+	if (iNavDirection == NAV_DIR_NORTH || iNavDirection == NAV_DIR_SOUTH)
+	{
+		if (iNavDirection == NAV_DIR_NORTH)
+		{
+			flCenter[1] = flAreaExtentLow[1];
+		}
+		else
+		{
+			flCenter[1] = flAreaExtentHigh[1];
+		}
+		
+		new Float:flLeft = flAreaExtentLow[0] > flAreaToExtentLow[0] ? flAreaExtentLow[0] : flAreaToExtentLow[0];
+		new Float:flRight = flAreaExtentHigh[0] < flAreaToExtentHigh[0] ? flAreaExtentHigh[0] : flAreaToExtentHigh[0];
+		
+		if (flLeft < flAreaExtentLow[0]) flLeft = flAreaExtentLow[0];
+		else if (flLeft > flAreaExtentHigh[0]) flLeft = flAreaExtentHigh[0];
+		
+		if (flRight < flAreaExtentLow[0]) flRight = flAreaExtentLow[0];
+		else if (flRight > flAreaExtentHigh[0]) flRight = flAreaExtentHigh[0];
+		
+		flCenter[0] = (flLeft + flRight) / 2.0;
+		flHalfWidth = (flRight - flLeft) / 2.0;
+	}
+	else
+	{
+		if (iNavDirection == NAV_DIR_WEST)
+		{
+			flCenter[0] = flAreaExtentLow[0];
+		}
+		else
+		{
+			flCenter[0] = flAreaExtentHigh[0];
+		}
+		
+		new Float:flTop = flAreaExtentLow[1] > flAreaToExtentLow[1] ? flAreaExtentLow[1] : flAreaToExtentLow[1];
+		new Float:flBottom = flAreaExtentHigh[1] < flAreaToExtentHigh[1] ? flAreaExtentHigh[1] : flAreaToExtentHigh[1];
+		
+		if (flTop < flAreaExtentLow[1]) flTop = flAreaExtentLow[1];
+		else if (flTop > flAreaExtentHigh[1]) flTop = flAreaExtentHigh[1];
+		
+		if (flBottom < flAreaExtentLow[1]) flBottom = flAreaExtentLow[1];
+		else if (flBottom > flAreaExtentHigh[1]) flBottom = flAreaExtentHigh[1];
+		
+		flCenter[1] = (flTop + flBottom) / 2.0;
+		flHalfWidth = (flBottom - flTop) / 2.0;
+	}
+	
+	flCenter[2] = NavMeshAreaGetZFromXAndY(iAreaIndex, flCenter[0], flCenter[1]);
+	
+	return true;
+}
+
+stock bool:NavMeshAreaComputeClosestPointInPortal(iAreaIndex, iAreaToIndex, iNavDirection, const Float:flFromPos[3], Float:flClosestPos[3])
+{
+	if (!g_bNavMeshBuilt) return false;
+	
+	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
+	if (hAreas == INVALID_HANDLE) return false;
+
+	static Float:flMargin = 25.0; // GenerationStepSize = 25.0;
+	
+	decl Float:flAreaExtentLow[3], Float:flAreaExtentHigh[3];
+	NavMeshAreaGetExtentLow(iAreaIndex, flAreaExtentLow);
+	NavMeshAreaGetExtentHigh(iAreaIndex, flAreaExtentHigh);
+	
+	decl Float:flAreaToExtentLow[3], Float:flAreaToExtentHigh[3];
+	NavMeshAreaGetExtentLow(iAreaToIndex, flAreaToExtentLow);
+	NavMeshAreaGetExtentHigh(iAreaToIndex, flAreaToExtentHigh);
+	
+	if (iNavDirection == NAV_DIR_NORTH || iNavDirection == NAV_DIR_SOUTH)
+	{
+		if (iNavDirection == NAV_DIR_NORTH)
+		{
+			flClosestPos[1] = flAreaExtentLow[1];
+		}
+		else
+		{
+			flClosestPos[1] = flAreaExtentHigh[1];
+		}
+		
+		new Float:flLeft = flAreaExtentLow[0] > flAreaToExtentLow[0] ? flAreaExtentLow[0] : flAreaToExtentLow[0];
+		new Float:flRight = flAreaExtentHigh[0] < flAreaToExtentHigh[0] ? flAreaExtentHigh[0] : flAreaToExtentHigh[0];
+		
+		new Float:flLeftMargin = NavMeshAreaIsEdge(iAreaToIndex, NAV_DIR_WEST) ? (flLeft + flMargin) : flLeft;
+		new Float:flRightMargin = NavMeshAreaIsEdge(iAreaToIndex, NAV_DIR_EAST) ? (flRight - flMargin) : flRight;
+		
+		if (flLeftMargin > flRightMargin)
+		{
+			new Float:flMid = (flLeft + flRight) / 2.0;
+			flLeftMargin = flRightMargin = flMid;
+		}
+		
+		if (flFromPos[0] < flLeftMargin)
+		{
+			flClosestPos[0] = flLeftMargin;
+		}
+		else if (flFromPos[0] > flRightMargin)
+		{
+			flClosestPos[0] = flRightMargin;
+		}
+		else
+		{
+			flClosestPos[0] = flFromPos[0];
+		}
+	}
+	else
+	{
+		if (iNavDirection == NAV_DIR_WEST)
+		{
+			flClosestPos[0] = flAreaExtentLow[0];
+		}
+		else
+		{
+			flClosestPos[0] = flAreaExtentHigh[0];
+		}
+		
+		new Float:flTop = flAreaExtentLow[1] > flAreaToExtentLow[1] ? flAreaExtentLow[1] : flAreaToExtentLow[1];
+		new Float:flBottom = flAreaExtentHigh[1] < flAreaToExtentHigh[1] ? flAreaExtentHigh[1] : flAreaToExtentHigh[1];
+		
+		new Float:flTopMargin = NavMeshAreaIsEdge(iAreaToIndex, NAV_DIR_NORTH) ? (flTop + flMargin) : flTop;
+		new Float:flBottomMargin = NavMeshAreaIsEdge(iAreaToIndex, NAV_DIR_SOUTH) ? (flBottom - flMargin) : flBottom;
+		
+		if (flTopMargin > flBottomMargin)
+		{
+			new Float:flMid = (flTop + flBottom) / 2.0;
+			flTopMargin = flBottomMargin = flMid;
+		}
+		
+		if (flFromPos[1] < flTopMargin)
+		{
+			flClosestPos[1] = flTopMargin;
+		}
+		else if (flFromPos[1] > flBottomMargin)
+		{
+			flClosestPos[1] = flBottomMargin;
+		}
+		else
+		{
+			flClosestPos[1] = flFromPos[1];
+		}
+	}
+	
+	flClosestPos[2] = NavMeshAreaGetZFromXAndY(iAreaIndex, flClosestPos[0], flClosestPos[1]);
+	
+	return true;
+}
+
+stock bool:NavMeshAreaIsEdge(iAreaIndex, iNavDirection)
+{
+	new Handle:hConnections = NavMeshAreaGetAdjacentList(iAreaIndex, iNavDirection);
+	if (hConnections == INVALID_HANDLE || IsStackEmpty(hConnections))
+	{
+		CloseHandle(hConnections);
+		return true;
+	}
+	
+	CloseHandle(hConnections);
+	return false;
 }
 
 stock Float:NavMeshLadderGetLength(iLadderIndex)
@@ -1785,12 +2012,50 @@ public Native_NavMeshAreaGetZ(Handle:plugin, numParams)
 	return _:NavMeshAreaGetZ(GetNativeCell(1), flPos);
 }
 
+public Native_NavMeshAreaGetZFromXAndY(Handle:plugin, numParams)
+{
+	return _:NavMeshAreaGetZFromXAndY(GetNativeCell(1), Float:GetNativeCell(2), Float:GetNativeCell(3));
+}
+
 public Native_NavMeshAreaContains(Handle:plugin, numParams)
 {
 	decl Float:flPos[3];
 	GetNativeArray(2, flPos, 3);
 
 	return NavMeshAreaContains(GetNativeCell(1), flPos);
+}
+
+public Native_NavMeshAreaComputePortal(Handle:plugin, numParams)
+{
+	new Float:flCenter[3];
+	new Float:flHalfWidth = GetNativeCellRef(5);
+	
+	new bool:bResult = NavMeshAreaComputePortal(GetNativeCell(1),
+		GetNativeCell(2),
+		GetNativeCell(3),
+		flCenter,
+		flHalfWidth);
+		
+	SetNativeArray(4, flCenter, 3);
+	SetNativeCellRef(5, flHalfWidth);
+	return bResult;
+}
+
+public Native_NavMeshAreaComputeClosestPointInPortal(Handle:plugin, numParams)
+{
+	decl Float:flFromPos[3];
+	GetNativeArray(4, flFromPos, 3);
+	
+	new Float:flClosestPos[3];
+
+	new bool:bResult = NavMeshAreaComputeClosestPointInPortal(GetNativeCell(1),
+		GetNativeCell(2),
+		GetNativeCell(3),
+		flFromPos,
+		flClosestPos);
+		
+	SetNativeArray(5, flClosestPos, 3);
+	return bResult;
 }
 
 public Native_NavMeshLadderGetLength(Handle:plugin, numParams)
