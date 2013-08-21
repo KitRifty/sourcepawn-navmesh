@@ -89,7 +89,10 @@ enum
 	NavMeshArea_HidingSpots,
 	NavMeshArea_EncounterPaths,
 	NavMeshArea_LadderConnections,
-	NavMeshArea_CornerLightIntensities,
+	NavMeshArea_CornerLightIntensityNW,
+	NavMeshArea_CornerLightIntensityNE,
+	NavMeshArea_CornerLightIntensitySE,
+	NavMeshArea_CornerLightIntensitySW,
 	NavMeshArea_VisibleAreas,
 	NavMeshArea_InheritVisibilityFrom,
 	NavMeshArea_EarliestOccupyTimeFirstTeam,
@@ -147,13 +150,6 @@ enum
 	NavMeshLadderConnection_LadderIndex = 0,
 	NavMeshLadderConnection_Direction,
 	NavMeshLadderConnection_MaxStats
-};
-
-enum
-{
-	NavMeshCornerLightIntensity_CornerIndex = 0,
-	NavMeshCornerLightIntensity_Intensity,
-	NavMeshCornerLightIntensity_MaxStats
 };
 
 enum

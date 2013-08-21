@@ -729,7 +729,6 @@ bool:NavMeshLoad(const String:sMapName[])
 			new Handle:hHidingSpots = CreateArray(NavMeshHidingSpot_MaxStats);
 			new Handle:hEncounterPaths = CreateArray(NavMeshEncounterPath_MaxStats);
 			new Handle:hLadderConnections = CreateArray(NavMeshLadderConnection_MaxStats);
-			new Handle:hCornerLightIntensities = CreateArray(NavMeshCornerLightIntensity_MaxStats);
 			new Handle:hVisibleAreas = CreateArray(NavMeshVisibleArea_MaxStats);
 			new iInheritVisibilityFrom;
 			new iHidingSpotCount;
@@ -963,18 +962,17 @@ bool:NavMeshLoad(const String:sMapName[])
 			ReadFileCell(hFile, _:flEarliestOccupyTimeFirstTeam, FLOAT_BYTE_SIZE);
 			ReadFileCell(hFile, _:flEarliestOccupyTimeSecondTeam, FLOAT_BYTE_SIZE);
 			
+			new Float:flNavCornerLightIntensityNW;
+			new Float:flNavCornerLightIntensityNE;
+			new Float:flNavCornerLightIntensitySE;
+			new Float:flNavCornerLightIntensitySW;
+			
 			if (iNavVersion >= 11)
 			{
-				for (new iNavCornerIndex = 0; iNavCornerIndex < NAV_CORNER_COUNT; iNavCornerIndex++)
-				{
-					new Float:flNavCornerLightIntensity;
-					ReadFileCell(hFile, _:flNavCornerLightIntensity, FLOAT_BYTE_SIZE);
-					
-					new iIndex = PushArrayCell(hCornerLightIntensities, iNavCornerIndex);
-					SetArrayCell(hCornerLightIntensities, iIndex, flNavCornerLightIntensity, NavMeshCornerLightIntensity_Intensity);
-					
-					//LogMessage("Light intensity: [%f] [idx %d]", flNavCornerLightIntensity, iNavCornerIndex);
-				}
+				ReadFileCell(hFile, _:flNavCornerLightIntensityNW, FLOAT_BYTE_SIZE);
+				ReadFileCell(hFile, _:flNavCornerLightIntensityNE, FLOAT_BYTE_SIZE);
+				ReadFileCell(hFile, _:flNavCornerLightIntensitySE, FLOAT_BYTE_SIZE);
+				ReadFileCell(hFile, _:flNavCornerLightIntensitySW, FLOAT_BYTE_SIZE);
 				
 				if (iNavVersion >= 16)
 				{
@@ -1010,6 +1008,16 @@ bool:NavMeshLoad(const String:sMapName[])
 					
 					ReadFileCell(hFile, unk01, UNSIGNED_INT_BYTE_SIZE);
 				}
+				else
+				{
+					CloseHandle(hVisibleAreas);
+					hVisibleAreas = INVALID_HANDLE;
+				}
+			}
+			else
+			{
+				CloseHandle(hVisibleAreas);
+				hVisibleAreas = INVALID_HANDLE;
 			}
 			
 			new iIndex = PushArrayCell(hAreas, iAreaID);
@@ -1030,7 +1038,10 @@ bool:NavMeshLoad(const String:sMapName[])
 			SetArrayCell(hAreas, iIndex, hHidingSpots, NavMeshArea_HidingSpots);
 			SetArrayCell(hAreas, iIndex, hEncounterPaths, NavMeshArea_EncounterPaths);
 			SetArrayCell(hAreas, iIndex, hLadderConnections, NavMeshArea_LadderConnections);
-			SetArrayCell(hAreas, iIndex, hCornerLightIntensities, NavMeshArea_CornerLightIntensities);
+			SetArrayCell(hAreas, iIndex, flNavCornerLightIntensityNW, NavMeshArea_CornerLightIntensityNW);
+			SetArrayCell(hAreas, iIndex, flNavCornerLightIntensityNE, NavMeshArea_CornerLightIntensityNE);
+			SetArrayCell(hAreas, iIndex, flNavCornerLightIntensitySE, NavMeshArea_CornerLightIntensitySE);
+			SetArrayCell(hAreas, iIndex, flNavCornerLightIntensitySW, NavMeshArea_CornerLightIntensitySW);
 			SetArrayCell(hAreas, iIndex, hVisibleAreas, NavMeshArea_VisibleAreas);
 			SetArrayCell(hAreas, iIndex, iInheritVisibilityFrom, NavMeshArea_InheritVisibilityFrom);
 			SetArrayCell(hAreas, iIndex, flEarliestOccupyTimeFirstTeam, NavMeshArea_EarliestOccupyTimeFirstTeam);
@@ -1227,9 +1238,6 @@ NavMeshDestroy()
 				
 				new Handle:hAreaLadderConnections = Handle:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_LadderConnections);
 				if (hAreaLadderConnections != INVALID_HANDLE) CloseHandle(hAreaLadderConnections);
-				
-				new Handle:hAreaCornerLightIntensities = Handle:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_CornerLightIntensities);
-				if (hAreaCornerLightIntensities != INVALID_HANDLE) CloseHandle(hAreaCornerLightIntensities);
 				
 				new Handle:hAreaVisibleAreas = Handle:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_VisibleAreas);
 				if (hAreaVisibleAreas != INVALID_HANDLE) CloseHandle(hAreaVisibleAreas);
