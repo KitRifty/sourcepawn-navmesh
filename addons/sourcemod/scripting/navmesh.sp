@@ -45,6 +45,9 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	
 	CreateNative("NavMesh_BuildPath", Native_NavMeshBuildPath);
 	
+	CreateNative("NavMesh_GetArea", Native_NavMeshGetArea);
+	CreateNative("NavMesh_GetNearestArea", Native_NavMeshGetNearestArea);
+	
 	CreateNative("NavMeshArea_GetFlags", Native_NavMeshAreaGetFlags);
 	CreateNative("NavMeshArea_GetCenter", Native_NavMeshAreaGetCenter);
 	CreateNative("NavMeshArea_GetAdjacentList", Native_NavMeshAreaGetAdjacentList);
@@ -66,6 +69,8 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	CreateNative("NavMeshArea_Contains", Native_NavMeshAreaContains);
 	CreateNative("NavMeshArea_ComputePortal", Native_NavMeshAreaComputePortal);
 	CreateNative("NavMeshArea_ComputeClosestPointInPortal", Native_NavMeshAreaComputeClosestPointInPortal);
+	CreateNative("NavMeshArea_ComputeDirection", Native_NavMeshAreaComputeDirection);
+	CreateNative("NavMeshArea_GetLightIntensity", Native_NavMeshAreaGetLightIntensity);
 	
 	CreateNative("NavMeshLadder_GetLength", Native_NavMeshLadderGetLength);
 }
@@ -1516,18 +1521,15 @@ stock Float:NavMeshAreaGetZ(iAreaIndex, const Float:flPos[3])
 	new Float:u = (flPos[0] - flExtentLow[0]) / dx;
 	new Float:v = (flPos[1] - flExtentLow[1]) / dy;
 	
-	if (u < 0.0) u = 0.0;
-	else if (u > 1.0) u = 1.0;
-	
-	if (v < 0.0) v = 0.0;
-	else if (v > 1.0) v = 1.0;
+	u = FloatClamp(u, 0.0, 1.0);
+	v = FloatClamp(v, 0.0, 1.0);
 	
 	new Float:flSWZ = NavMeshAreaGetSWCornerZ(iAreaIndex);
 	
-	new Float:flNorthZ = flExtentLow[2] + (u * (flNEZ - flExtentLow[2]));
-	new Float:flSouthZ = flSWZ + (u * (flExtentHigh[2] - flSWZ));
+	new Float:flNorthZ = flExtentLow[2] + u * (flNEZ - flExtentLow[2]);
+	new Float:flSouthZ = flSWZ + u * (flExtentHigh[2] - flSWZ);
 	
-	return flNorthZ + (v * (flSouthZ - flNorthZ));
+	return flNorthZ + v * (flSouthZ - flNorthZ);
 }
 
 stock Float:NavMeshAreaGetZFromXAndY(iAreaIndex, Float:x, Float:y)
@@ -1554,11 +1556,8 @@ stock Float:NavMeshAreaGetZFromXAndY(iAreaIndex, Float:x, Float:y)
 	new Float:u = (x - flExtentLow[0]) * flInvDxCorners;
 	new Float:v = (y - flExtentLow[1]) * flInvDyCorners;
 	
-	u = u >= 0.0 ? u : 0.0;
-	u = u >= 1.0 ? 1.0 : u;
-	
-	v = v >= 0.0 ? v : 0.0;
-	v = v >= 1.0 ? v : 1.0;
+	u = FloatClamp(u, 0.0, 1.0);
+	v = FloatClamp(v, 0.0, 1.0);
 	
 	new Float:flSWCornerZ = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_SWCornerZ);
 	
@@ -1567,6 +1566,8 @@ stock Float:NavMeshAreaGetZFromXAndY(iAreaIndex, Float:x, Float:y)
 	
 	return flNorthZ + v * (flSouthZ - flNorthZ);
 }
+
+#define StepHeight 18.0
 
 stock bool:NavMeshAreaContains(iAreaIndex, const Float:flPos[3])
 {
@@ -1579,7 +1580,7 @@ stock bool:NavMeshAreaContains(iAreaIndex, const Float:flPos[3])
 	
 	new Float:flMyZ = NavMeshAreaGetZ(iAreaIndex, flPos);
 	
-	if (flMyZ > flPos[2]) return false;
+	if ((flMyZ - StepHeight) > flPos[2]) return false;
 	
 	for (new i = 0, iSize = GetArraySize(hAreas); i < iSize; i++)
 	{
@@ -1588,7 +1589,7 @@ stock bool:NavMeshAreaContains(iAreaIndex, const Float:flPos[3])
 		if (!NavMeshAreaIsOverlappingArea(iAreaIndex, i)) continue;
 		
 		new Float:flTheirZ = NavMeshAreaGetZ(i, flPos);
-		if (flTheirZ > flPos[2]) continue;
+		if ((flTheirZ - StepHeight) > flPos[2]) continue;
 		
 		if (flTheirZ > flMyZ)
 		{
@@ -1666,6 +1667,18 @@ stock bool:NavMeshAreaComputePortal(iAreaIndex, iAreaToIndex, iNavDirection, Flo
 	return true;
 }
 
+stock Float:FloatMin(Float:a, Float:b)
+{
+	if (a < b) return a;
+	return b;
+}
+
+stock Float:FloatMax(Float:a, Float:b)
+{
+	if (a > b) return a;
+	return b;
+}
+
 stock bool:NavMeshAreaComputeClosestPointInPortal(iAreaIndex, iAreaToIndex, iNavDirection, const Float:flFromPos[3], Float:flClosestPos[3])
 {
 	if (!g_bNavMeshBuilt) return false;
@@ -1694,8 +1707,8 @@ stock bool:NavMeshAreaComputeClosestPointInPortal(iAreaIndex, iAreaToIndex, iNav
 			flClosestPos[1] = flAreaExtentHigh[1];
 		}
 		
-		new Float:flLeft = flAreaExtentLow[0] > flAreaToExtentLow[0] ? flAreaExtentLow[0] : flAreaToExtentLow[0];
-		new Float:flRight = flAreaExtentHigh[0] < flAreaToExtentHigh[0] ? flAreaExtentHigh[0] : flAreaToExtentHigh[0];
+		new Float:flLeft = FloatMax(flAreaExtentLow[0], flAreaToExtentLow[0]);
+		new Float:flRight = FloatMin(flAreaExtentHigh[0], flAreaToExtentHigh[0]);
 		
 		new Float:flLeftMargin = NavMeshAreaIsEdge(iAreaToIndex, NAV_DIR_WEST) ? (flLeft + flMargin) : flLeft;
 		new Float:flRightMargin = NavMeshAreaIsEdge(iAreaToIndex, NAV_DIR_EAST) ? (flRight - flMargin) : flRight;
@@ -1703,7 +1716,8 @@ stock bool:NavMeshAreaComputeClosestPointInPortal(iAreaIndex, iAreaToIndex, iNav
 		if (flLeftMargin > flRightMargin)
 		{
 			new Float:flMid = (flLeft + flRight) / 2.0;
-			flLeftMargin = flRightMargin = flMid;
+			flLeftMargin = flMid;
+			flRightMargin = flMid;
 		}
 		
 		if (flFromPos[0] < flLeftMargin)
@@ -1730,8 +1744,8 @@ stock bool:NavMeshAreaComputeClosestPointInPortal(iAreaIndex, iAreaToIndex, iNav
 			flClosestPos[0] = flAreaExtentHigh[0];
 		}
 		
-		new Float:flTop = flAreaExtentLow[1] > flAreaToExtentLow[1] ? flAreaExtentLow[1] : flAreaToExtentLow[1];
-		new Float:flBottom = flAreaExtentHigh[1] < flAreaToExtentHigh[1] ? flAreaExtentHigh[1] : flAreaToExtentHigh[1];
+		new Float:flTop = FloatMax(flAreaExtentLow[1], flAreaToExtentLow[1]);
+		new Float:flBottom = FloatMin(flAreaExtentHigh[1], flAreaToExtentHigh[1]);
 		
 		new Float:flTopMargin = NavMeshAreaIsEdge(iAreaToIndex, NAV_DIR_NORTH) ? (flTop + flMargin) : flTop;
 		new Float:flBottomMargin = NavMeshAreaIsEdge(iAreaToIndex, NAV_DIR_SOUTH) ? (flBottom - flMargin) : flBottom;
@@ -1739,7 +1753,8 @@ stock bool:NavMeshAreaComputeClosestPointInPortal(iAreaIndex, iAreaToIndex, iNav
 		if (flTopMargin > flBottomMargin)
 		{
 			new Float:flMid = (flTop + flBottom) / 2.0;
-			flTopMargin = flBottomMargin = flMid;
+			flTopMargin = flMid;
+			flBottomMargin = flMid;
 		}
 		
 		if (flFromPos[1] < flTopMargin)
@@ -1761,16 +1776,108 @@ stock bool:NavMeshAreaComputeClosestPointInPortal(iAreaIndex, iAreaToIndex, iNav
 	return true;
 }
 
+stock NavMeshAreaComputeDirection(iAreaIndex, const Float:flPos[3])
+{
+	if (!g_bNavMeshBuilt) return NAV_DIR_COUNT;
+	
+	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
+	if (hAreas == INVALID_HANDLE) return NAV_DIR_COUNT;
+	
+	decl Float:flExtentLow[3], Float:flExtentHigh[3];
+	NavMeshAreaGetExtentLow(iAreaIndex, flExtentLow);
+	NavMeshAreaGetExtentHigh(iAreaIndex, flExtentHigh);
+	
+	if (flPos[0] >= flExtentLow[0] && flPos[0] <= flExtentHigh[0])
+	{
+		if (flPos[1] < flExtentLow[1])
+		{
+			return NAV_DIR_NORTH;
+		}
+		else if (flPos[1] > flExtentHigh[1])
+		{
+			return NAV_DIR_SOUTH;
+		}
+	}
+	else if (flPos[1] >= flExtentLow[1] && flPos[1] <= flExtentHigh[1])
+	{
+		if (flPos[0] < flExtentLow[0])
+		{
+			return NAV_DIR_WEST;
+		}
+		else if (flPos[0] > flExtentHigh[0])
+		{
+			return NAV_DIR_EAST;
+		}
+	}
+	
+	decl Float:flCenter[3];
+	NavMeshAreaGetCenter(iAreaIndex, flCenter);
+	
+	decl Float:flTo[3];
+	SubtractVectors(flPos, flCenter, flTo);
+	
+	if (FloatAbs(flTo[0]) > FloatAbs(flTo[1]))
+	{
+		if (flTo[0] > 0.0) return NAV_DIR_EAST;
+		
+		return NAV_DIR_WEST;
+	}
+	else
+	{
+		if (flTo[1] > 0.0) return NAV_DIR_SOUTH;
+		
+		return NAV_DIR_NORTH;
+	}
+}
+
+stock Float:NavMeshAreaGetLightIntensity(iAreaIndex, const Float:flPos[3])
+{
+	if (!g_bNavMeshBuilt) return 0.0;
+	
+	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
+	if (hAreas == INVALID_HANDLE) return 0.0;
+	
+	decl Float:flExtentLow[3], Float:flExtentHigh[3];
+	NavMeshAreaGetExtentLow(iAreaIndex, flExtentLow);
+	NavMeshAreaGetExtentHigh(iAreaIndex, flExtentHigh);
+
+	decl Float:flTestPos[3];
+	flTestPos[0] = FloatClamp(flPos[0], flExtentLow[0], flExtentHigh[0]);
+	flTestPos[1] = FloatClamp(flPos[1], flExtentLow[1], flExtentHigh[1]);
+	flTestPos[2] = flPos[2];
+	
+	new Float:dX = (flTestPos[0] - flExtentLow[0]) / (flExtentHigh[0] - flExtentLow[0]);
+	new Float:dY = (flTestPos[1] - flExtentLow[1]) / (flExtentHigh[1] - flExtentLow[1]);
+	
+	new Float:flCornerLightIntensityNW = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_CornerLightIntensityNW);
+	new Float:flCornerLightIntensityNE = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_CornerLightIntensityNE);
+	new Float:flCornerLightIntensitySW = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_CornerLightIntensitySW);
+	new Float:flCornerLightIntensitySE = Float:GetArrayCell(hAreas, iAreaIndex, NavMeshArea_CornerLightIntensitySE);
+	
+	new Float:flNorthLight = flCornerLightIntensityNW * (1.0 - dX) + flCornerLightIntensityNE * dX;
+	new Float:flSouthLight = flCornerLightIntensitySW * (1.0 - dX) + flCornerLightIntensitySE * dX;
+	
+	return (flNorthLight * (1.0 - dY) + flSouthLight * dY);
+}
+
+
+stock Float:FloatClamp(Float:a, Float:min, Float:max)
+{
+	if (a < min) a = min;
+	if (a > max) a = max;
+	return a;
+}
+
 stock bool:NavMeshAreaIsEdge(iAreaIndex, iNavDirection)
 {
 	new Handle:hConnections = NavMeshAreaGetAdjacentList(iAreaIndex, iNavDirection);
 	if (hConnections == INVALID_HANDLE || IsStackEmpty(hConnections))
 	{
-		CloseHandle(hConnections);
+		if (hConnections != INVALID_HANDLE) CloseHandle(hConnections);
 		return true;
 	}
 	
-	CloseHandle(hConnections);
+	if (hConnections != INVALID_HANDLE) CloseHandle(hConnections);
 	return false;
 }
 
@@ -1782,6 +1889,101 @@ stock Float:NavMeshLadderGetLength(iLadderIndex)
 	if (hLadders == INVALID_HANDLE) return 0.0;
 	
 	return Float:GetArrayCell(hLadders, iLadderIndex, NavMeshLadder_Length);
+}
+
+stock NavMeshGetArea(const Float:flPos[3])
+{
+	if (!g_bNavMeshBuilt) return -1;
+	
+	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
+	if (hAreas == INVALID_HANDLE) return -1;
+	
+	for (new iAreaIndex = 0, iAreaCount = GetArraySize(hAreas); iAreaIndex < iAreaCount; iAreaIndex++)
+	{
+		if (NavMeshAreaContains(iAreaIndex, flPos))
+		{
+			return iAreaIndex;
+		}
+	}
+	
+	return -1;
+}
+
+#define HalfHumanHeight 35.5
+
+stock bool:NavMeshGetGroundHeight(const Float:flPos[3], &Float:flHeight, Float:flNormal[3])
+{
+	static Float:flMaxOffset = 100.0;
+	
+	decl Float:flTo[3], Float:flFrom[3];
+	flTo[0] = flPos[0];
+	flTo[1] = flPos[1];
+	flTo[2] = flPos[2] - 10000.0;
+	
+	flFrom[0] = flPos[0];
+	flFrom[1] = flPos[1];
+	flFrom[2] = flPos[2] + HalfHumanHeight + 0.001;
+	
+	while (flTo[2] - flPos[2] < flMaxOffset)
+	{
+		new Handle:hTrace = TR_TraceRayEx(flFrom, flTo, MASK_NPCSOLID_BRUSHONLY, RayType_EndPoint);
+		new bool:bDidHit = TR_DidHit(hTrace);
+		new Float:flFraction = TR_GetFraction(hTrace);
+		decl Float:flPlaneNormal[3];
+		decl Float:flEndPos[3];
+		TR_GetEndPosition(flEndPos, hTrace);
+		TR_GetPlaneNormal(hTrace, flPlaneNormal);
+		CloseHandle(hTrace);
+		
+		if (!bDidHit && ((flFraction == 1.0 ) || ((flFrom[2] - flEndPos[2]) >= HalfHumanHeight)))
+		{
+			flHeight = flEndPos[2];
+			flNormal[0] = flPlaneNormal[0];
+			flNormal[1] = flPlaneNormal[1];
+			flNormal[2] = flPlaneNormal[2];
+			
+			return true;
+		}
+		
+		flTo[2] = (flFraction == 0.0) ? flFrom[2] : flEndPos[2];
+		flFrom[2] = flTo[2] + HalfHumanHeight + 0.001;
+	}
+	
+	flHeight = 0.0;
+	flNormal[0] = 0.0;
+	flNormal[1] = 0.0;
+	flNormal[2] = 1.0;
+	return false;
+}
+
+stock NavMeshGetNearestArea(const Float:flPos[3], Float:flMaxDist)
+{
+	if (!g_bNavMeshBuilt) return -1;
+	
+	new Handle:hAreas = Handle:GetArrayCell(g_hNavMesh, 0, NavMesh_Areas);
+	if (hAreas == INVALID_HANDLE) return -1;
+	
+	new iBestAreaIndex = -1;
+	new bool:bHasBestAreaIndex = false;
+	new Float:flBestAreaDist = 0.0;
+	
+	for (new iAreaIndex = 0, iAreaCount = GetArraySize(hAreas); iAreaIndex < iAreaCount; iAreaIndex++)
+	{
+		decl Float:flCenter[3];
+		NavMeshAreaGetCenter(iAreaIndex, flCenter);
+		
+		new Float:flDist = GetVectorDistance(flCenter, flPos);
+		
+		if ((flMaxDist <= 0.0 || flDist < flMaxDist) &&
+			(!bHasBestAreaIndex || (flDist < flBestAreaDist)))
+		{
+			iBestAreaIndex = iAreaIndex;
+			flBestAreaDist = flDist;
+			bHasBestAreaIndex = true;
+		}
+	}
+	
+	return iBestAreaIndex;
 }
 
 //	==================================
@@ -1898,6 +2100,22 @@ public Native_NavMeshBuildPath(Handle:plugin, numParams)
 		
 	SetNativeCellRef(5, iClosestIndex);
 	return bResult;
+}
+
+public Native_NavMeshGetArea(Handle:plugin, numParams)
+{
+	decl Float:flPos[3];
+	GetNativeArray(1, flPos, 3);
+
+	return NavMeshGetArea(flPos);
+}
+
+public Native_NavMeshGetNearestArea(Handle:plugin, numParams)
+{
+	decl Float:flPos[3];
+	GetNativeArray(1, flPos, 3);
+	
+	return NavMeshGetNearestArea(flPos, Float:GetNativeCell(2));
 }
 
 public Native_NavMeshAreaGetFlags(Handle:plugin, numParams)
@@ -2056,6 +2274,22 @@ public Native_NavMeshAreaComputeClosestPointInPortal(Handle:plugin, numParams)
 		
 	SetNativeArray(5, flClosestPos, 3);
 	return bResult;
+}
+
+public Native_NavMeshAreaComputeDirection(Handle:plugin, numParams)
+{
+	decl Float:flPos[3];
+	GetNativeArray(2, flPos, 3);
+	
+	return NavMeshAreaComputeDirection(GetNativeCell(1), flPos);
+}
+
+public Native_NavMeshAreaGetLightIntensity(Handle:plugin, numParams)
+{
+	decl Float:flPos[3];
+	GetNativeArray(2, flPos, 3);
+
+	//return _:NavMeshAreaGetLightIntensity(GetNativeCell(1), flPos);
 }
 
 public Native_NavMeshLadderGetLength(Handle:plugin, numParams)

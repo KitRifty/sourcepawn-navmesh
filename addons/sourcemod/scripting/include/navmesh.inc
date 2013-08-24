@@ -204,6 +204,12 @@ native Handle:NavMesh_GetLadders();
 native bool:NavMesh_BuildPath(iStartAreaIndex, iGoalAreaIndex, Float:flGoalPos[3], Function:iCostFunctor, &iClosestAreaIndex=-1, Float:flMaxPathLength=0.0);
 
 
+native NavMesh_GetArea(const Float:flPos[3]);
+
+native NavMesh_GetNearestArea(const Float:flPos[3], Float:flMaxDist);
+
+
+
 native NavMeshArea_GetFlags(iAreaIndex);
 
 native bool:NavMeshArea_GetCenter(iAreaIndex, Float:flBuffer[3]);
@@ -246,6 +252,9 @@ native bool:NavMeshArea_ComputePortal(iAreaIndex, iAreaToIndex, iNavDirection, F
 
 native bool:NavMeshArea_ComputeClosestPointInPortal(iAreaIndex, iAreaToIndex, iNavDirection, const Float:flFromPos[3], Float:flClosestPos[3]);
 
+native NavMeshArea_ComputeDirection(iAreaIndex, const Float:flPos[3]);
+
+native Float:NavMeshArea_GetLightIntensity(iAreaIndex, const Float:flPos[3]);
 
 native Float:NavMeshLadder_GetLength(iLadderID);
 
