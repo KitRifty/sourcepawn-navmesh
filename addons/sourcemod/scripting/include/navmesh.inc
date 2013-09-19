@@ -64,7 +64,15 @@ enum
 	NavMesh_SaveBSPSize,
 	NavMesh_IsMeshAnalyzed,
 	NavMesh_Places,
+	
 	NavMesh_Areas,
+	NavMesh_AreaConnections,
+	NavMesh_AreaHidingSpots,
+	NavMesh_AreaEncounterPaths,
+	NavMesh_AreaEncounterSpots,
+	NavMesh_AreaLadderConnections,
+	NavMesh_AreaVisibleAreas,
+	
 	NavMesh_Ladders,
 	NavMesh_MaxStats
 };
@@ -87,20 +95,39 @@ enum
 	NavMeshArea_InvDyCorners,
 	NavMeshArea_NECornerZ,
 	NavMeshArea_SWCornerZ,
-	NavMeshArea_Connections,
-	NavMeshArea_HidingSpots,
-	NavMeshArea_EncounterPaths,
-	NavMeshArea_LadderConnections,
+	
+//	NavMeshArea_Connections,
+	NavMeshArea_ConnectionsStartIndex,
+	NavMeshArea_ConnectionsEndIndex,
+	
+//	NavMeshArea_HidingSpots,
+	NavMeshArea_HidingSpotsStartIndex,
+	NavMeshArea_HidingSpotsEndIndex,
+	
+//	NavMeshArea_EncounterPaths,
+	NavMeshArea_EncounterPathsStartIndex,
+	NavMeshArea_EncounterPathsEndIndex,
+	
+//	NavMeshArea_LadderConnections,
+	NavMeshArea_LadderConnectionsStartIndex,
+	NavMeshArea_LadderConnectionsEndIndex,
+	
 	NavMeshArea_CornerLightIntensityNW,
 	NavMeshArea_CornerLightIntensityNE,
 	NavMeshArea_CornerLightIntensitySE,
 	NavMeshArea_CornerLightIntensitySW,
-	NavMeshArea_VisibleAreas,
+	
+//	NavMeshArea_VisibleAreas,
+	NavMeshArea_VisibleAreasStartIndex,
+	NavMeshArea_VisibleAreasEndIndex,
+	
 	NavMeshArea_InheritVisibilityFrom,
 	NavMeshArea_EarliestOccupyTimeFirstTeam,
 	NavMeshArea_EarliestOccupyTimeSecondTeam,
 	NavMeshArea_unk01,
 	NavMeshArea_Blocked,
+	
+// 	A* pathfinding
 	NavMeshArea_Parent,
 	NavMeshArea_ParentHow,
 	NavMeshArea_CostSoFar,
@@ -136,7 +163,8 @@ enum
 	NavMeshEncounterPath_FromDirection,
 	NavMeshEncounterPath_ToID,
 	NavMeshEncounterPath_ToDirection,
-	NavMeshEncounterPath_Spots,
+	NavMeshEncounterPath_SpotsStartIndex,
+	NavMeshEncounterPath_SpotsEndIndex,
 	NavMeshEncounterPath_MaxStats
 };
 
@@ -201,7 +229,7 @@ native Handle:NavMesh_GetAreas();
 native Handle:NavMesh_GetLadders();
 
 
-native bool:NavMesh_BuildPath(iStartAreaIndex, iGoalAreaIndex, Float:flGoalPos[3], Function:iCostFunctor, &iClosestAreaIndex=-1, Float:flMaxPathLength=0.0);
+native bool:NavMesh_BuildPath(iStartAreaIndex, iGoalAreaIndex, Float:flGoalPos[3], Function:iCostFunctor, any:iCostData=INVALID_HANDLE, &iClosestAreaIndex=-1, Float:flMaxPathLength=0.0);
 
 
 native NavMesh_GetArea(const Float:flPos[3]);
@@ -260,7 +288,7 @@ native Float:NavMeshLadder_GetLength(iLadderID);
 
 
 // Shortest-path cost functor for NavMeshBuildPath
-public NavMeshShortestPathCost(iAreaIndex, iFromAreaIndex, iLadderIndex)
+public NavMeshShortestPathCost(iAreaIndex, iFromAreaIndex, iLadderIndex, any:data)
 {
 	if (iFromAreaIndex == -1)
 	{
