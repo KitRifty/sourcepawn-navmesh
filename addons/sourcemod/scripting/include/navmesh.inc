@@ -3,6 +3,12 @@
 #endif
 #define _navmesh_included
 
+#define HalfHumanHeight 35.5
+
+#define StepHeight 18.0
+
+#define NAV_MAGIC_NUMBER 0xFEEDFACE
+
 enum
 {
 	NAV_DIR_NORTH = 0,
@@ -54,27 +60,6 @@ enum
 	GO_LADDER_DOWN,
 	GO_JUMP,
 	NUM_TRAVERSE_TYPES
-};
-
-enum
-{
-	NavMesh_MagicNumber = 0,
-	NavMesh_Version,
-	NavMesh_SubVersion,
-	NavMesh_SaveBSPSize,
-	NavMesh_IsMeshAnalyzed,
-	NavMesh_Places,
-	
-	NavMesh_Areas,
-	NavMesh_AreaConnections,
-	NavMesh_AreaHidingSpots,
-	NavMesh_AreaEncounterPaths,
-	NavMesh_AreaEncounterSpots,
-	NavMesh_AreaLadderConnections,
-	NavMesh_AreaVisibleAreas,
-	
-	NavMesh_Ladders,
-	NavMesh_MaxStats
 };
 
 enum
@@ -137,6 +122,9 @@ enum
 	NavMeshArea_PrevOpenIndex,
 	NavMeshArea_NextOpenIndex,
 	NavMeshArea_PathLengthSoFar,
+	
+	NavMeshArea_NearSearchMarker,
+	
 	NavMeshArea_MaxStats
 };
 
@@ -209,6 +197,20 @@ enum
 	NavMeshLadder_MaxStats
 };
 
+enum
+{
+	NavMeshGrid_ListStartIndex = 0,
+	NavMeshGrid_ListEndIndex,
+	NavMeshGrid_MaxStats
+};
+
+enum
+{
+	NavMeshGridList_AreaIndex = 0,
+	NavMeshGridList_Owner,
+	NavMeshGridList_MaxStats
+};
+
 
 native NavMesh_Exists();
 
@@ -229,13 +231,14 @@ native Handle:NavMesh_GetAreas();
 native Handle:NavMesh_GetLadders();
 
 
+native Handle:NavMesh_CollectSurroundingAreas(iStartAreaIndex, Float:flTravelDistanceLimit=1500.0, Float:flMaxStepUpLimit=StepHeight, Float:flMaxDropDownLimit=100.0);
+
 native bool:NavMesh_BuildPath(iStartAreaIndex, iGoalAreaIndex, Float:flGoalPos[3], Function:iCostFunctor, any:iCostData=INVALID_HANDLE, &iClosestAreaIndex=-1, Float:flMaxPathLength=0.0);
 
 
-native NavMesh_GetArea(const Float:flPos[3]);
+native NavMesh_GetArea(const Float:flPos[3], Float:flBeneathLimit=120.0);
 
-native NavMesh_GetNearestArea(const Float:flPos[3], Float:flMaxDist);
-
+native NavMesh_GetNearestArea(const Float:flPos[3], bool:bAnyZ=false, Float:flMaxDist=10000.0, bool:bCheckLOS=false, bool:bCheckGround=true, iTeam=-2);
 
 
 native NavMeshArea_GetFlags(iAreaIndex);
@@ -245,6 +248,8 @@ native bool:NavMeshArea_GetCenter(iAreaIndex, Float:flBuffer[3]);
 native Handle:NavMeshArea_GetAdjacentList(iAreaIndex, iDirection);
 
 native Handle:NavMeshArea_GetLadderList(iAreaIndex, iLadderDirection);
+
+native NavMeshArea_GetClosestPointOnArea(iAreaIndex, const Float:flPos[3], Float:flClose[3]);
 
 native NavMeshArea_GetTotalCost(iAreaIndex);
 
@@ -287,7 +292,7 @@ native Float:NavMeshArea_GetLightIntensity(iAreaIndex, const Float:flPos[3]);
 native Float:NavMeshLadder_GetLength(iLadderID);
 
 
-// Shortest-path cost functor for NavMeshBuildPath
+// Shortest-path cost function for NavMesh_BuildPath.
 public NavMeshShortestPathCost(iAreaIndex, iFromAreaIndex, iLadderIndex, any:data)
 {
 	if (iFromAreaIndex == -1)
