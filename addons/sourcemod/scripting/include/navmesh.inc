@@ -326,6 +326,113 @@ public NavMeshShortestPathCost(iAreaIndex, iFromAreaIndex, iLadderIndex, any:dat
 	}
 }
 
+#define WALK_THRU_PROP_DOORS		0x01
+#define WALK_THRU_FUNC_DOORS		0x02
+#define WALK_THRU_DOORS				(WALK_THRU_PROP_DOORS | WALK_THRU_FUNC_DOORS)
+#define WALK_THRU_BREAKABLES		0x04
+#define WALK_THRU_TOGGLE_BRUSHES	0x08
+#define WALK_THRU_EVERYTHING		(WALK_THRU_DOORS | WALK_THRU_BREAKABLES | WALK_THRU_TOGGLE_BRUSHES)
+
+
+stock bool:IsEntityWalkable(iEnt, iFlags)
+{
+	decl String:sClass[64];
+	GetEntityClassname(iEnt, sClass, sizeof(sClass));
+	
+	if (!strcmp(sClass, "worldspawn")) return false;
+	
+	if (!strcmp(sClass, "player")) return false;
+	
+	if (!strcmp(sClass, "func_door*"))
+	{
+		return (iFlags & WALK_THRU_PROP_DOORS) ? true : false;
+	}
+	
+	if (!strcmp(sClass, "prop_door*"))
+	{
+		return (iFlags & WALK_THRU_PROP_DOORS) ? true : false;
+	}
+	
+	if (!strcmp(sClass, "func_brush"))
+	{
+		new iSolidity = GetEntProp(iEnt, Prop_Data, "m_iSolidity");
+		
+		switch (iSolidity)
+		{
+			case 2: // BRUSHSOLID_ALWAYS
+			{
+				return false;
+			}
+			case 1: // BRUSHSOLID_NEVER
+			{
+				return true;
+			}
+			case 0: // BRUSHSOLID_TOGGLE
+			{
+				return (iFlags & WALK_THRU_TOGGLE_BRUSHES) ? true : false;
+			}
+		}
+		
+		return (iFlags & WALK_THRU_PROP_DOORS) ? true : false;
+	}
+	
+	if (!strcmp(sClass, "func_breakable") && GetEntProp(iEnt, Prop_Data, "m_iHealth") && GetEntProp(iEnt, Prop_Data, "m_takedamage") == 2) // DAMAGE_YES
+	{
+		return (iFlags & WALK_THRU_BREAKABLES) ? true : false;
+	}
+	
+	if (!strcmp(sClass, "func_playerinfected_clip"))
+	{
+		return true;
+	}
+	
+	return false;
+}
+
+stock bool:IsWalkableTraceLineClear(const Float:flFrom[3], const Float:flTo[3], iFlags)
+{
+	decl Float:flUseFrom[3];
+	flUseFrom[0] = flFrom[0];
+	flUseFrom[1] = flFrom[1];
+	flUseFrom[2] = flFrom[2];
+	
+	decl Handle:hTrace;
+	
+	new Float:flFraction = 0.0;
+	
+	for (new t = 0; t < 50; t++)
+	{
+		hTrace = TR_TraceRayFilterEx(flUseFrom, flTo, MASK_NPCSOLID, RayType_EndPoint, TraceFilterWalkableEntities, iFlags);
+		flFraction = TR_GetFraction(hTrace);
+		new iResEnt = TR_GetEntityIndex(hTrace);
+		decl Float:flResPos[3];
+		TR_GetEndPosition(flResPos, hTrace);
+		CloseHandle(hTrace);
+		
+		if (flFraction != 1.0 && IsEntityWalkable(iResEnt, iFlags))
+		{
+			decl Float:flDir[3];
+			SubtractVectors(flTo, flFrom, flDir);
+			NormalizeVector(flDir, flDir);
+			ScaleVector(flDir, 5.0);
+			AddVectors(flResPos, flDir, flUseFrom);
+		}
+		else
+		{
+			break;
+		}
+	}
+	
+	if (flFraction == 1.0) return true;
+	
+	return false;
+}
+
+public bool:TraceFilterWalkableEntities(entity, mask, any:iFlags)
+{
+	return !IsEntityWalkable(entity, iFlags)
+}
+
 
 public SharedPlugin:__pl_navmesh = 
 {
