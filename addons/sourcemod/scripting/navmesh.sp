@@ -203,7 +203,7 @@ Handle:NavMeshCollectSurroundingAreas(iStartAreaIndex,
 	Float:flMaxStepUpLimit=StepHeight,
 	Float:flMaxDropDownLimit=100.0)
 {
-	if (!g_bNavMeshBuilt) 
+	if (!g_bNavMeshBuilt)
 	{
 		LogError("Could not search surrounding areas because the nav mesh does not exist!");
 		return INVALID_HANDLE;
@@ -853,7 +853,7 @@ bool:NavMeshLoad(const String:sMapName[])
 		
 		PushArrayString(g_hNavMeshPlaces, sPlaceName);
 		
-		LogMessage("Parsed place \"%s\" [index: %d]", sPlaceName, iPlaceIndex);
+		//LogMessage("Parsed place \"%s\" [index: %d]", sPlaceName, iPlaceIndex);
 	}
 	
 	// Get any unnamed areas.
@@ -1258,6 +1258,7 @@ bool:NavMeshLoad(const String:sMapName[])
 			SetArrayCell(g_hNavMeshAreas, iIndex, -1, NavMeshArea_NextOpenIndex);
 			SetArrayCell(g_hNavMeshAreas, iIndex, 0.0, NavMeshArea_PathLengthSoFar);
 			SetArrayCell(g_hNavMeshAreas, iIndex, false, NavMeshArea_Blocked);
+			SetArrayCell(g_hNavMeshAreas, iIndex, -1, NavMeshArea_NearSearchMarker);
 		}
 	}
 	
@@ -1328,8 +1329,6 @@ bool:NavMeshLoad(const String:sMapName[])
 			SetArrayCell(g_hNavMeshLadders, iIndex, iLadderTopRightAreaID, NavMeshLadder_TopRightAreaIndex);
 			SetArrayCell(g_hNavMeshLadders, iIndex, iLadderTopBehindAreaID, NavMeshLadder_TopBehindAreaIndex);
 			SetArrayCell(g_hNavMeshLadders, iIndex, iLadderBottomAreaID, NavMeshLadder_BottomAreaIndex);
-			
-			SetArrayCell(g_hNavMeshLadders, iIndex, -1, NavMeshArea_NearSearchMarker);
 		}
 	}
 	

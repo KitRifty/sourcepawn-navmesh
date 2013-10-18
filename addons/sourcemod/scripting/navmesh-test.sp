@@ -5,6 +5,8 @@
 
 #define PLUGIN_VERSION "1.0.0"
 
+new g_iPathLaserModelIndex = -1;
+
 public Plugin:myinfo = 
 {
     name = "SP-Readable Navigation Mesh Test",
@@ -20,6 +22,11 @@ public OnPluginStart()
 	RegConsoleCmd("sm_navmesh_buildpath", Command_NavMeshBuildPath);
 	RegConsoleCmd("sm_navmesh_getnearestarea", Command_GetNearestArea);
 	RegConsoleCmd("sm_navmesh_getadjacentareas", Command_GetAdjacentNavAreas);
+}
+
+public OnMapStart()
+{
+	g_iPathLaserModelIndex = PrecacheModel("materials/sprites/laserbeam.vmt");
 }
 
 public Action:Command_GetNearestArea(client, args)
@@ -227,15 +234,16 @@ public Action:Command_NavMeshBuildPath(client, args)
 	{
 		PrintToChat(client, "Path built!\nBuild path time: %f\nReached goal: %d", flProfileTime, bBuiltPath);
 		
-		static iModelIndex = -1;
-		if (iModelIndex == -1) iModelIndex = PrecacheModel("materials/sprites/laserbeam.vmt");
-		
 		new iTempAreaIndex = iClosestAreaIndex;
 		new iParentAreaIndex = NavMeshArea_GetParent(iTempAreaIndex);
 		new iNavDirection;
 		new Float:flHalfWidth;
 		
 		decl Float:flCenterPortal[3], Float:flClosestPoint[3];
+		
+		new Handle:hPositions = CreateArray(3);
+		
+		PushArrayArray(hPositions, flGoalPos, 3);
 		
 		while (iParentAreaIndex != -1)
 		{
@@ -249,11 +257,26 @@ public Action:Command_NavMeshBuildPath(client, args)
 			
 			flClosestPoint[2] = NavMeshArea_GetZ(iTempAreaIndex, flClosestPoint);
 			
-			/*
-			TE_SetupBeamPoints(flTempAreaCenter,
-				flParentAreaCenter,
-				iModelIndex,
-				iModelIndex,
+			PushArrayArray(hPositions, flClosestPoint, 3);
+			
+			iTempAreaIndex = iParentAreaIndex;
+			iParentAreaIndex = NavMeshArea_GetParent(iTempAreaIndex);
+		}
+		
+		decl Float:flStartPos[3];
+		NavMeshArea_GetCenter(iStartAreaIndex, flStartPos);
+		PushArrayArray(hPositions, flStartPos, 3);
+		
+		for (new i = GetArraySize(hPositions) - 1; i > 0; i--)
+		{
+			decl Float:flFromPos[3], Float:flToPos[3];
+			GetArrayArray(hPositions, i, flFromPos, 3);
+			GetArrayArray(hPositions, i - 1, flToPos, 3);
+			
+			TE_SetupBeamPoints(flFromPos,
+				flToPos,
+				g_iPathLaserModelIndex,
+				g_iPathLaserModelIndex,
 				0,
 				30,
 				5.0,
@@ -263,15 +286,8 @@ public Action:Command_NavMeshBuildPath(client, args)
 				0.0,
 				iColor,
 				30);
-			*/
-			
-			TE_SetupSparks(flClosestPoint, Float:{ -90.0, 0.0, 0.0 }, 5, 5);
+				
 			TE_SendToClient(client);
-			
-			PrintToChat(client, "Connected ID: %d (%f %f %f)", iParentAreaIndex, flClosestPoint[0], flClosestPoint[1], flClosestPoint[2]);
-			
-			iTempAreaIndex = iParentAreaIndex;
-			iParentAreaIndex = NavMeshArea_GetParent(iTempAreaIndex);
 		}
 	}
 	else 
