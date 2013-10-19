@@ -1,3 +1,9 @@
+// Huge huge HUGE props and credits to Anthony Iacono (pimpinjuice) and his Nav-file parser code,
+// which can be found here: https://github.com/AnthonyIacono/War3SourceV2/tree/master/Nav
+
+// The rest of the code is based off code in the source-sdk-2013 repository. I only
+// attempted to recreate those functions to be used in SourcePawn.
+
 #include <sourcemod>
 #include <sdktools>
 #include <navmesh>
@@ -6,9 +12,9 @@
 
 public Plugin:myinfo = 
 {
-    name = "SP-Readable Navigation Mesh",
+    name = "SourcePawn Navigation Mesh Parser",
     author	= "KitRifty",
-    description	= "Heavily based off of pimpinjuice's .cpp code for War3Source, this analyzes the map's .nav file and creates the mesh based off the info.",
+    description	= "A plugin that can read Valve's Navigation Mesh.",
     version = PLUGIN_VERSION,
     url = ""
 }
