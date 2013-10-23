@@ -192,7 +192,7 @@ stock Float:NavMeshAreaComputeAdjacentConnectionHeightChange(iAreaIndex, iTarget
 		if (bFoundArea) break;
 	}
 	
-	if (!bFoundArea) return 999999999999.0;
+	if (!bFoundArea) return 99999999.9;
 	
 	decl Float:flMyEdge[3];
 	new Float:flHalfWidth;
@@ -876,8 +876,12 @@ bool:NavMeshLoad(const String:sMapName[])
 	
 	LogMessage("Area count: %d", iAreaCount);
 	
-	new Float:flExtentLow[3] = { 9999999999.9, 9999999999.9, 0.0 };
-	new Float:flExtentHigh[3] = { -9999999999.9, -9999999999.9, 0.0 };
+	new Float:flExtentLow[2] = { 99999999.9, 99999999.9 };
+	new bool:bExtentLowX = false;
+	new bool:bExtentLowY = false;
+	new Float:flExtentHigh[2] = { -99999999.9, -99999999.9 };
+	new bool:bExtentHighX = false;
+	new bool:bExtentHighY = false;
 	
 	if (iAreaCount > 0)
 	{
@@ -936,10 +940,29 @@ bool:NavMeshLoad(const String:sMapName[])
 			
 			//LogMessage("Area extent: (%f, %f, %f), (%f, %f, %f)", x1, y1, z1, x2, y2, z2);
 			
-			if (x1 < flExtentLow[0]) flExtentLow[0] = x1;
-			if (y1 < flExtentLow[1]) flExtentLow[1] = y1;
-			if (x2 > flExtentHigh[0]) flExtentHigh[0] = x2;
-			if (y2 > flExtentHigh[1]) flExtentHigh[1] = y2;
+			if (!bExtentLowX || x1 < flExtentLow[0]) 
+			{
+				bExtentLowX = true;
+				flExtentLow[0] = x1;
+			}
+			
+			if (!bExtentLowY || y1 < flExtentLow[1]) 
+			{
+				bExtentLowY = true;
+				flExtentLow[1] = y1;
+			}
+			
+			if (!bExtentHighX || x2 > flExtentHigh[0]) 
+			{
+				bExtentHighX = true;
+				flExtentHigh[0] = x2;
+			}
+			
+			if (!bExtentHighY || y2 > flExtentHigh[1]) 
+			{
+				bExtentHighY = true;
+				flExtentHigh[1] = y2;
+			}
 			
 			// Cache the center position for faster performance.
 			decl Float:flAreaCenter[3];
