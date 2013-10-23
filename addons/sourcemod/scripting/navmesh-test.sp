@@ -20,6 +20,7 @@ public OnPluginStart()
 {
 	RegConsoleCmd("sm_navmesh_collectsurroundingareas", Command_NavMeshCollectSurroundingAreas);
 	RegConsoleCmd("sm_navmesh_buildpath", Command_NavMeshBuildPath);
+	RegConsoleCmd("sm_navmesh_getarea", Command_GetArea);
 	RegConsoleCmd("sm_navmesh_getnearestarea", Command_GetNearestArea);
 	RegConsoleCmd("sm_navmesh_getadjacentareas", Command_GetAdjacentNavAreas);
 }
@@ -27,6 +28,37 @@ public OnPluginStart()
 public OnMapStart()
 {
 	g_iPathLaserModelIndex = PrecacheModel("materials/sprites/laserbeam.vmt");
+}
+
+public Action:Command_GetArea(client, args)
+{
+	if (!NavMesh_Exists()) return Plugin_Handled;
+
+	decl Float:flEyePos[3], Float:flEyeDir[3], Float:flEndPos[3];
+	GetClientEyePosition(client, flEyePos);
+	GetClientEyeAngles(client, flEyeDir);
+	GetAngleVectors(flEyeDir, flEyeDir, NULL_VECTOR, NULL_VECTOR);
+	NormalizeVector(flEyeDir, flEyeDir);
+	ScaleVector(flEyeDir, 1000.0);
+	AddVectors(flEyePos, flEyeDir, flEndPos);
+	
+	new Handle:hTrace = TR_TraceRayFilterEx(flEyePos,
+		flEndPos,
+		MASK_PLAYERSOLID_BRUSHONLY,
+		RayType_EndPoint,
+		TraceRayDontHitEntity,
+		client);
+	
+	TR_GetEndPosition(flEndPos, hTrace);
+	CloseHandle(hTrace);
+	
+	new iAreaIndex = NavMesh_GetArea(flEndPos);
+	new Handle:hAreas = NavMesh_GetAreas();
+	new iAreaID = GetArrayCell(hAreas, iAreaIndex, NavMeshArea_ID);
+	
+	PrintToChat(client, "Nearest area ID: %d", iAreaID);
+	
+	return Plugin_Handled;
 }
 
 public Action:Command_GetNearestArea(client, args)
