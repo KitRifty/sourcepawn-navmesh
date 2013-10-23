@@ -8,7 +8,7 @@
 #include <sdktools>
 #include <navmesh>
 
-#define PLUGIN_VERSION "1.0.0"
+#define PLUGIN_VERSION "1.0.1"
 
 public Plugin:myinfo = 
 {
