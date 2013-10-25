@@ -241,6 +241,17 @@ native NavMesh_GetArea(const Float:flPos[3], Float:flBeneathLimit=120.0);
 native NavMesh_GetNearestArea(const Float:flPos[3], bool:bAnyZ=false, Float:flMaxDist=10000.0, bool:bCheckLOS=false, bool:bCheckGround=true, iTeam=-2);
 
 
+native NavMesh_WorldToGridX(Float:flWX);
+
+native NavMesh_WorldToGridY(Float:flWY);
+
+native Handle:NavMesh_GetAreasOnGrid(x, y);
+
+native NavMesh_GetGridSizeX();
+
+native NavMesh_GetGridSizeY();
+
+
 native NavMeshArea_GetFlags(iAreaIndex);
 
 native bool:NavMeshArea_GetCenter(iAreaIndex, Float:flBuffer[3]);

@@ -20,6 +20,9 @@ public OnPluginStart()
 {
 	RegConsoleCmd("sm_navmesh_collectsurroundingareas", Command_NavMeshCollectSurroundingAreas);
 	RegConsoleCmd("sm_navmesh_buildpath", Command_NavMeshBuildPath);
+	RegConsoleCmd("sm_navmesh_worldtogridx", Command_NavMeshWorldToGridX);
+	RegConsoleCmd("sm_navmesh_worldtogridy", Command_NavMeshWorldToGridY);
+	RegConsoleCmd("sm_navmesh_getareasongrid", Command_GetNavAreasOnGrid);
 	RegConsoleCmd("sm_navmesh_getarea", Command_GetArea);
 	RegConsoleCmd("sm_navmesh_getnearestarea", Command_GetNearestArea);
 	RegConsoleCmd("sm_navmesh_getadjacentareas", Command_GetAdjacentNavAreas);
@@ -83,11 +86,22 @@ public Action:Command_GetNearestArea(client, args)
 	TR_GetEndPosition(flEndPos, hTrace);
 	CloseHandle(hTrace);
 	
-	new iAreaIndex = NavMesh_GetNearestArea(flEndPos);
-	new Handle:hAreas = NavMesh_GetAreas();
-	new iAreaID = GetArrayCell(hAreas, iAreaIndex, NavMeshArea_ID);
+	new x = NavMesh_WorldToGridX(flEndPos[0]);
+	new y = NavMesh_WorldToGridY(flEndPos[1]);
+	new iGridIndex = x + y * NavMesh_GetGridSizeX();
 	
-	PrintToChat(client, "Nearest area ID: %d", iAreaID);
+	new iAreaIndex = NavMesh_GetNearestArea(flEndPos);
+	if (iAreaIndex != -1)
+	{
+		new Handle:hAreas = NavMesh_GetAreas();
+		new iAreaID = GetArrayCell(hAreas, iAreaIndex, NavMeshArea_ID);
+		
+		PrintToChat(client, "Nearest area ID found from spiral out of %d: %d", iGridIndex, iAreaID);
+	}
+	else
+	{
+		PrintToChat(client, "Could not find nearest area in spiral out of %d!", iGridIndex);
+	}
 	
 	return Plugin_Handled;
 }
@@ -201,6 +215,65 @@ public Action:Command_NavMeshCollectSurroundingAreas(client, args)
 		{
 			PrintToServer("Collected %d areas in %f seconds.", iAreaCount, flProfileTime);
 		}
+	}
+	
+	return Plugin_Handled;
+}
+
+public Action:Command_NavMeshWorldToGridX(client, args)
+{
+	if (args < 1) return Plugin_Handled;
+	
+	decl String:arg1[32];
+	GetCmdArg(1, arg1, sizeof(arg1));
+	
+	new Float:flpl = StringToFloat(arg1);
+	
+	ReplyToCommand(client, "Grid x: %d", NavMesh_WorldToGridX(flpl));
+	
+	return Plugin_Handled;
+}
+
+public Action:Command_NavMeshWorldToGridY(client, args)
+{
+	if (args < 1) return Plugin_Handled;
+	
+	decl String:arg1[32];
+	GetCmdArg(1, arg1, sizeof(arg1));
+	
+	new Float:flpl = StringToFloat(arg1);
+	
+	ReplyToCommand(client, "Grid y: %d", NavMesh_WorldToGridY(flpl));
+	
+	return Plugin_Handled;
+}
+
+public Action:Command_GetNavAreasOnGrid(client, args)
+{
+	if (args < 2) return Plugin_Handled;
+	
+	decl String:arg1[32];
+	GetCmdArg(1, arg1, sizeof(arg1));
+	
+	new x = StringToInt(arg1);
+	
+	decl String:arg2[32];
+	GetCmdArg(2, arg2, sizeof(arg2));
+	
+	new y = StringToInt(arg2);
+	
+	new Handle:hAreas = NavMesh_GetAreasOnGrid(x, y);
+	if (hAreas != INVALID_HANDLE)
+	{
+		while (!IsStackEmpty(hAreas))
+		{
+			new iAreaIndex = -1;
+			PopStackCell(hAreas, iAreaIndex);
+			
+			ReplyToCommand(client, "%d", iAreaIndex);
+		}
+		
+		CloseHandle(hAreas);
 	}
 	
 	return Plugin_Handled;

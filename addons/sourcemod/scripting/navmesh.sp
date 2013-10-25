@@ -8,7 +8,7 @@
 #include <sdktools>
 #include <navmesh>
 
-#define PLUGIN_VERSION "1.0.1"
+#define PLUGIN_VERSION "1.0.2"
 
 public Plugin:myinfo = 
 {
@@ -78,6 +78,12 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	
 	CreateNative("NavMesh_GetArea", Native_NavMeshGetArea);
 	CreateNative("NavMesh_GetNearestArea", Native_NavMeshGetNearestArea);
+	
+	CreateNative("NavMesh_WorldToGridX", Native_NavMeshWorldToGridX);
+	CreateNative("NavMesh_WorldToGridY", Native_NavMeshWorldToGridY);
+	CreateNative("NavMesh_GetAreasOnGrid", Native_NavMeshGridGetAreas);
+	CreateNative("NavMesh_GetGridSizeX", Native_NavMeshGetGridSizeX);
+	CreateNative("NavMesh_GetGridSizeY", Native_NavMeshGetGridSizeY);
 	
 	CreateNative("NavMeshArea_GetMasterMarker", Native_NavMeshAreaGetMasterMarker);
 	CreateNative("NavMeshArea_ChangeMasterMarker", Native_NavMeshAreaChangeMasterMarker);
@@ -964,7 +970,7 @@ bool:NavMeshLoad(const String:sMapName[])
 				flExtentHigh[1] = y2;
 			}
 			
-			// Cache the center position for faster performance.
+			// Cache the center position.
 			decl Float:flAreaCenter[3];
 			flAreaCenter[0] = (x1 + x2) / 2.0;
 			flAreaCenter[1] = (y1 + y2) / 2.0;
@@ -1459,27 +1465,72 @@ NavMeshGridAllocate(Float:flMinX, Float:flMaxX, Float:flMinY, Float:flMaxY)
 	g_flNavMeshMinX = flMinX;
 	g_flNavMeshMinY = flMinY;
 	
-	g_iNavMeshGridSizeX = RoundToFloor((flMaxX - flMinX) / g_flNavMeshGridCellSize) + 1;
-	g_iNavMeshGridSizeY = RoundToFloor((flMaxY - flMinY) / g_flNavMeshGridCellSize) + 1;
+	g_iNavMeshGridSizeX = IntCast((flMaxX - flMinX) / g_flNavMeshGridCellSize) + 1;
+	g_iNavMeshGridSizeY = IntCast((flMaxY - flMinY) / g_flNavMeshGridCellSize) + 1;
 	
 	new iArraySize = g_iNavMeshGridSizeX * g_iNavMeshGridSizeY;
+	ResizeArray(g_hNavMeshGrid, iArraySize);
 	
-	for (new i = 0; i < iArraySize; i++)
+	for (new iGridIndex = 0; iGridIndex < iArraySize; iGridIndex++)
 	{
-		new iIndex = PushArrayCell(g_hNavMeshGrid, -1);
-		SetArrayCell(g_hNavMeshGrid, iIndex, -1, NavMeshGrid_ListEndIndex);
+		SetArrayCell(g_hNavMeshGrid, iGridIndex, -1, NavMeshGrid_ListStartIndex);
+		SetArrayCell(g_hNavMeshGrid, iGridIndex, -1, NavMeshGrid_ListEndIndex);
 	}
 }
 
 NavMeshGridFinalize()
 {
-	for (new i = 0, iSize = GetArraySize(g_hNavMeshGrid); i < iSize; i++)
+	new iAreaCount = GetArraySize(g_hNavMeshAreas);
+	new bool:bAreaInGrid[iAreaCount];
+	
+	SortADTArrayCustom(g_hNavMeshGridLists, SortNavMeshGridLists);
+	
+	for (new iGridIndex = 0, iSize = GetArraySize(g_hNavMeshGrid); iGridIndex < iSize; iGridIndex++)
 	{
 		new iStartIndex = -1;
 		new iEndIndex = -1;
-		NavMeshGridGetListBounds(i, iStartIndex, iEndIndex);
-		SetArrayCell(g_hNavMeshGrid, i, iStartIndex, NavMeshGrid_ListStartIndex);
-		SetArrayCell(g_hNavMeshGrid, i, iEndIndex, NavMeshGrid_ListEndIndex);
+		NavMeshGridGetListBounds(iGridIndex, iStartIndex, iEndIndex);
+		SetArrayCell(g_hNavMeshGrid, iGridIndex, iStartIndex, NavMeshGrid_ListStartIndex);
+		SetArrayCell(g_hNavMeshGrid, iGridIndex, iEndIndex, NavMeshGrid_ListEndIndex);
+		
+		if (iStartIndex != -1)
+		{
+			for (new iListIndex = iStartIndex; iListIndex <= iEndIndex; iListIndex++)
+			{
+				new iAreaIndex = GetArrayCell(g_hNavMeshGridLists, iListIndex);
+				if (iAreaIndex != -1)
+				{
+					bAreaInGrid[iAreaIndex] = true;
+				}
+				else
+				{
+					LogError("Warning! Invalid nav area found in list of grid index %d!", iGridIndex);
+				}
+			}
+		}
+	}
+	
+	new bool:bAllIn = true;
+	new iErrorAreaIndex = -1;
+	
+	for (new iAreaIndex = 0; iAreaIndex < iAreaCount; iAreaIndex++)
+	{
+		if (!bAreaInGrid[iAreaIndex])
+		{
+			iErrorAreaIndex = iAreaIndex;
+			bAllIn = false;
+			break;
+		}
+	}
+	
+	if (bAllIn)
+	{
+		LogMessage("All nav areas parsed into the grid!");
+	}
+	else
+	{
+		LogError("Warning! Not all nav areas were parsed into the grid! Please check your nav mesh!");
+		LogError("First encountered nav area ID %d not in the grid!", GetArrayCell(g_hNavMeshAreas, iErrorAreaIndex));
 	}
 }
 
@@ -1493,24 +1544,19 @@ NavMeshGridFinalize()
 
 // The array indexes should be assigned afterwards using NavMeshGridFinalize().
 
+public SortNavMeshGridLists(index1, index2, Handle:array, Handle:hndl)
+{
+	new iGridIndex1 = GetArrayCell(array, index1, NavMeshGridList_Owner);
+	new iGridIndex2 = GetArrayCell(array, index2, NavMeshGridList_Owner);
+	
+	if (iGridIndex1 < iGridIndex2) return -1;
+	else if (iGridIndex1 > iGridIndex2) return 1;
+	return 0;
+}
+
 NavMeshGridAddAreaToList(iGridIndex, iAreaIndex)
 {
-	new iIndex = -1;
-	new iListStartIndex, iListEndIndex;
-	NavMeshGridGetListBounds(iGridIndex, iListStartIndex, iListEndIndex);
-	
-	if (iListStartIndex == -1 || iListEndIndex == (GetArraySize(g_hNavMeshGridLists) - 1)) 
-	{
-		// Push at the end of the array.
-		iIndex = PushArrayCell(g_hNavMeshGridLists, iAreaIndex);
-	}
-	else
-	{
-		// Push at the list ending position.
-		iIndex = iListEndIndex + 1;
-		ShiftArrayUp(g_hNavMeshGridLists, iIndex);
-		SetArrayCell(g_hNavMeshGridLists, iIndex, iAreaIndex, NavMeshGridList_AreaIndex);
-	}
+	new iIndex = PushArrayCell(g_hNavMeshGridLists, iAreaIndex);
 	
 	if (iIndex != -1)
 	{
@@ -1535,51 +1581,92 @@ NavMeshGridGetListBounds(iGridIndex, &iStartIndex, &iEndIndex)
 
 NavMeshAddAreaToGrid(iAreaIndex)
 {
-	new Float:flExtentLow[3], Float:flExtentHigh[3];
-	NavMeshAreaGetExtentLow(iAreaIndex, flExtentLow);
-	NavMeshAreaGetExtentHigh(iAreaIndex, flExtentHigh);
+	new Float:flExtentLow[2], Float:flExtentHigh[2];
+//	NavMeshAreaGetExtentLow(iAreaIndex, flExtentLow);
+//	NavMeshAreaGetExtentHigh(iAreaIndex, flExtentHigh);
+	
+	flExtentLow[0] = Float:GetArrayCell(g_hNavMeshAreas, iAreaIndex, NavMeshArea_X1);
+	flExtentLow[1] = Float:GetArrayCell(g_hNavMeshAreas, iAreaIndex, NavMeshArea_Y1);
+	flExtentHigh[0] = Float:GetArrayCell(g_hNavMeshAreas, iAreaIndex, NavMeshArea_X2);
+	flExtentHigh[1] = Float:GetArrayCell(g_hNavMeshAreas, iAreaIndex, NavMeshArea_Y2);
 	
 	new loX = NavMeshWorldToGridX(flExtentLow[0]);
 	new loY = NavMeshWorldToGridY(flExtentLow[1]);
 	new hiX = NavMeshWorldToGridX(flExtentHigh[0]);
 	new hiY = NavMeshWorldToGridY(flExtentHigh[1]);
 	
+	/*
+	decl String:path[PLATFORM_MAX_PATH];
+	BuildPath(Path_SM,path,PLATFORM_MAX_PATH, "navtest.txt");
+	new Handle:hFile = OpenFile(path, "a");
+	
+	WriteFileLine(hFile, "[%d]", GetArrayCell(g_hNavMeshAreas, iAreaIndex));
+	WriteFileLine(hFile, "{");
+	WriteFileLine(hFile, "\t---Extent: (%f, %f) - (%f, %f)", flExtentLow[0], flExtentLow[1], flExtentHigh[0], flExtentHigh[1]);
+	*/
+	
 	for (new y = loY; y <= hiY; ++y)
 	{
+		//WriteFileLine(hFile, "\t--- y = %d", y);
+	
 		for (new x = loX; x <= hiX; ++x)
 		{
-			NavMeshGridAddAreaToList(x + y * g_iNavMeshGridSizeX, iAreaIndex);
+			//WriteFileLine(hFile, "\t\t--- x = %d", x);
+		
+			new iGridIndex = x + y * g_iNavMeshGridSizeX;
+			NavMeshGridAddAreaToList(iGridIndex, iAreaIndex);
+			
+			//WriteFileLine(hFile, "\t\t\t--- %d", iGridIndex);
 		}
 	}
+	
+	/*
+	WriteFileLine(hFile, "}");
+	CloseHandle(hFile);
+	*/
 }
 
 // The following functions are stock functions associated with the navmesh grid. These
 // are safe to use after the grid has been finalized using NavMeshGridFinalize(), and
 // can be included in other stock functions as well.
 
+stock IntCast(Float:val)
+{
+	if (val < 0.0) return RoundToFloor(val);
+	return RoundToCeil(val);
+}
+
 stock NavMeshWorldToGridX(Float:flWX)
 {
-	new x = RoundToFloor((flWX - g_flNavMeshMinX) / g_flNavMeshGridCellSize);
+	new x = IntCast((flWX - g_flNavMeshMinX) / g_flNavMeshGridCellSize);
 	
 	if (x < 0) x = 0;
-	else if (x >= g_iNavMeshGridSizeX) x = g_iNavMeshGridSizeX - 1;
+	else if (x >= g_iNavMeshGridSizeX) 
+	{
+	//	PrintToServer("NavMeshWorldToGridX: clamping x (%d) down to %d", x, g_iNavMeshGridSizeX - 1);
+		x = g_iNavMeshGridSizeX - 1;
+	}
 	
 	return x;
 }
 
 stock NavMeshWorldToGridY(Float:flWY)
 {
-	new y = RoundToFloor((flWY - g_flNavMeshMinY) / g_flNavMeshGridCellSize);
+	new y = IntCast((flWY - g_flNavMeshMinY) / g_flNavMeshGridCellSize);
 	
 	if (y < 0) y = 0;
-	else if (y >= g_iNavMeshGridSizeY) y = g_iNavMeshGridSizeY - 1;
+	else if (y >= g_iNavMeshGridSizeY) 
+	{
+	//	PrintToServer("NavMeshWorldToGridY: clamping y (%d) down to %d", y, g_iNavMeshGridSizeY - 1);
+		y = g_iNavMeshGridSizeY - 1;
+	}
 	
 	return y;
 }
 
 stock Handle:NavMeshGridGetAreas(x, y)
 {
-	new iGridIndex = x + (y * g_iNavMeshGridSizeX);
+	new iGridIndex = x + y * g_iNavMeshGridSizeX;
 	new iListStartIndex = GetArrayCell(g_hNavMeshGrid, iGridIndex, NavMeshGrid_ListStartIndex);
 	new iListEndIndex = GetArrayCell(g_hNavMeshGrid, iGridIndex, NavMeshGrid_ListEndIndex);
 	
@@ -1641,18 +1728,18 @@ stock NavMeshGetNearestArea(const Float:flPos[3], bool:bAnyZ=false, Float:flMaxD
 	
 	for (new iShift = 0; iShift <= iShiftLimit; ++iShift)
 	{
-		for (new x = iOriginX - iShift; x <= iOriginX + iShift; ++x)
+		for (new x = (iOriginX - iShift); x <= (iOriginX + iShift); ++x)
 		{
 			if (x < 0 || x >= g_iNavMeshGridSizeX) continue;
 			
-			for (new y = iOriginY - iShift; y <= iOriginY + iShift; ++y)
+			for (new y = (iOriginY - iShift); y <= (iOriginY + iShift); ++y)
 			{
 				if (y < 0 || y >= g_iNavMeshGridSizeY) continue;
 				
-				if (x > iOriginX - iShift &&
-					x < iOriginX + iShift &&
-					y > iOriginY - iShift &&
-					y < iOriginY + iShift)
+				if (x > (iOriginX - iShift) &&
+					x < (iOriginX + iShift) &&
+					y > (iOriginY - iShift) &&
+					y < (iOriginY + iShift))
 				{
 					continue;
 				}
@@ -2560,6 +2647,31 @@ public Native_NavMeshGetNearestArea(Handle:plugin, numParams)
 	GetNativeArray(1, flPos, 3);
 	
 	return NavMeshGetNearestArea(flPos, bool:GetNativeCell(2), Float:GetNativeCell(3), bool:GetNativeCell(4), bool:GetNativeCell(5), GetNativeCell(6));
+}
+
+public Native_NavMeshWorldToGridX(Handle:plugin, numParams)
+{
+	return NavMeshWorldToGridX(Float:GetNativeCell(1));
+}
+
+public Native_NavMeshWorldToGridY(Handle:plugin, numParams)
+{
+	return NavMeshWorldToGridY(Float:GetNativeCell(1));
+}
+
+public Native_NavMeshGridGetAreas(Handle:plugin, numParams)
+{
+	return _:NavMeshGridGetAreas(GetNativeCell(1), GetNativeCell(2));
+}
+
+public Native_NavMeshGetGridSizeX(Handle:plugin, numParams)
+{
+	return g_iNavMeshGridSizeX;
+}
+
+public Native_NavMeshGetGridSizeY(Handle:plugin, numParams)
+{
+	return g_iNavMeshGridSizeY;
 }
 
 public Native_NavMeshAreaGetClosestPointOnArea(Handle:plugin, numParams)
