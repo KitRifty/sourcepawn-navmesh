@@ -231,7 +231,7 @@ native Handle:NavMesh_GetAreas();
 native Handle:NavMesh_GetLadders();
 
 
-native Handle:NavMesh_CollectSurroundingAreas(iStartAreaIndex, Float:flTravelDistanceLimit=1500.0, Float:flMaxStepUpLimit=StepHeight, Float:flMaxDropDownLimit=100.0);
+native NavMesh_CollectSurroundingAreas(Handle:hStack, iStartAreaIndex, Float:flTravelDistanceLimit=1500.0, Float:flMaxStepUpLimit=StepHeight, Float:flMaxDropDownLimit=100.0);
 
 native bool:NavMesh_BuildPath(iStartAreaIndex, iGoalAreaIndex, Float:flGoalPos[3], Function:iCostFunctor, any:iCostData=INVALID_HANDLE, &iClosestAreaIndex=-1, Float:flMaxPathLength=0.0);
 
@@ -245,7 +245,7 @@ native NavMesh_WorldToGridX(Float:flWX);
 
 native NavMesh_WorldToGridY(Float:flWY);
 
-native Handle:NavMesh_GetAreasOnGrid(x, y);
+native NavMesh_GetAreasOnGrid(Handle:hStack, x, y);
 
 native NavMesh_GetGridSizeX();
 
@@ -256,9 +256,9 @@ native NavMeshArea_GetFlags(iAreaIndex);
 
 native bool:NavMeshArea_GetCenter(iAreaIndex, Float:flBuffer[3]);
 
-native Handle:NavMeshArea_GetAdjacentList(iAreaIndex, iDirection);
+native NavMeshArea_GetAdjacentList(Handle:hStack, iAreaIndex, iDirection);
 
-native Handle:NavMeshArea_GetLadderList(iAreaIndex, iLadderDirection);
+native NavMeshArea_GetLadderList(Handle:hStack, iAreaIndex, iLadderDirection);
 
 native NavMeshArea_GetClosestPointOnArea(iAreaIndex, const Float:flPos[3], Float:flClose[3]);
 

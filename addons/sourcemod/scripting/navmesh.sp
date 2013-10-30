@@ -8,7 +8,7 @@
 #include <sdktools>
 #include <navmesh>
 
-#define PLUGIN_VERSION "1.0.2"
+#define PLUGIN_VERSION "1.0.3"
 
 public Plugin:myinfo = 
 {
@@ -2411,7 +2411,7 @@ stock bool:NavMeshAreaIsEdge(iAreaIndex, iNavDirection)
 		return true;
 	}
 	
-	if (hConnections != INVALID_HANDLE) CloseHandle(hConnections);
+	CloseHandle(hConnections);
 	return false;
 }
 
@@ -2460,9 +2460,9 @@ stock NavMeshGetArea(const Float:flPos[3], Float:flBeneathLimit=120.0)
 				}
 			}
 		}
+		
+		CloseHandle(hAreas);
 	}
-	
-	if (hAreas != INVALID_HANDLE) CloseHandle(hAreas);
 	
 	return iUseAreaIndex;
 }
@@ -2610,7 +2610,20 @@ public Native_NavMeshGetLadders(Handle:plugin, numParams)
 
 public Native_NavMeshCollectSurroundingAreas(Handle:plugin, numParams)
 {
-	return _:NavMeshCollectSurroundingAreas(GetNativeCell(1), Float:GetNativeCell(2), Float:GetNativeCell(3), Float:GetNativeCell(4));
+	new Handle:hTarget = Handle:GetNativeCell(1);
+	new Handle:hDummy = NavMeshCollectSurroundingAreas(GetNativeCell(2), Float:GetNativeCell(3), Float:GetNativeCell(4), Float:GetNativeCell(5));
+	
+	if (hDummy != INVALID_HANDLE)
+	{
+		while (!IsStackEmpty(hDummy))
+		{
+			new iAreaIndex = -1;
+			PopStackCell(hDummy, iAreaIndex);
+			PushStackCell(hTarget, iAreaIndex);
+		}
+		
+		CloseHandle(hDummy);
+	}
 }
 
 public Native_NavMeshBuildPath(Handle:plugin, numParams)
@@ -2661,7 +2674,20 @@ public Native_NavMeshWorldToGridY(Handle:plugin, numParams)
 
 public Native_NavMeshGridGetAreas(Handle:plugin, numParams)
 {
-	return _:NavMeshGridGetAreas(GetNativeCell(1), GetNativeCell(2));
+	new Handle:hTarget = Handle:GetNativeCell(1);
+	new Handle:hDummy = NavMeshGridGetAreas(GetNativeCell(2), GetNativeCell(3));
+	
+	if (hDummy != INVALID_HANDLE)
+	{
+		while (!IsStackEmpty(hDummy))
+		{
+			new iAreaIndex = -1;
+			PopStackCell(hDummy, iAreaIndex);
+			PushStackCell(hTarget, iAreaIndex);
+		}
+		
+		CloseHandle(hDummy);
+	}
 }
 
 public Native_NavMeshGetGridSizeX(Handle:plugin, numParams)
@@ -2711,12 +2737,38 @@ public Native_NavMeshAreaGetCenter(Handle:plugin, numParams)
 
 public Native_NavMeshAreaGetAdjacentList(Handle:plugin, numParams)
 {
-	return _:NavMeshAreaGetAdjacentList(GetNativeCell(1), GetNativeCell(2));
+	new Handle:hTarget = Handle:GetNativeCell(1);
+	new Handle:hDummy = NavMeshAreaGetAdjacentList(GetNativeCell(2), GetNativeCell(3));
+	
+	if (hDummy != INVALID_HANDLE)
+	{
+		while (!IsStackEmpty(hDummy))
+		{
+			new iAreaIndex = -1;
+			PopStackCell(hDummy, iAreaIndex);
+			PushStackCell(hTarget, iAreaIndex);
+		}
+		
+		CloseHandle(hDummy);
+	}
 }
 
 public Native_NavMeshAreaGetLadderList(Handle:plugin, numParams)
 {
-	return _:NavMeshAreaGetLadderList(GetNativeCell(1), GetNativeCell(2));
+	new Handle:hTarget = Handle:GetNativeCell(1);
+
+	new Handle:hDummy = NavMeshAreaGetLadderList(GetNativeCell(2), GetNativeCell(3));
+	if (hDummy != INVALID_HANDLE)
+	{
+		while (!IsStackEmpty(hDummy))
+		{
+			new iAreaIndex = -1;
+			PopStackCell(hDummy, iAreaIndex);
+			PushStackCell(hTarget, iAreaIndex);
+		}
+		
+		CloseHandle(hDummy);
+	}
 }
 
 public Native_NavMeshAreaGetTotalCost(Handle:plugin, numParams)

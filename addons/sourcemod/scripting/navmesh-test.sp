@@ -3,7 +3,7 @@
 #include <profiler>
 #include <navmesh>
 
-#define PLUGIN_VERSION "1.0.0"
+#define PLUGIN_VERSION "1.0.1"
 
 new g_iPathLaserModelIndex = -1;
 
@@ -137,8 +137,10 @@ public Action:Command_GetAdjacentNavAreas(client, args)
 		return Plugin_Handled;
 	}
 	
-	new Handle:hAdjacentAreas = NavMeshArea_GetAdjacentList(iStartAreaIndex, iNavDirection);
-	if (hAdjacentAreas != INVALID_HANDLE && !IsStackEmpty(hAdjacentAreas))
+	new Handle:hAdjacentAreas = CreateStack();
+	NavMeshArea_GetAdjacentList(hAdjacentAreas, iStartAreaIndex, iNavDirection);
+	
+	if (!IsStackEmpty(hAdjacentAreas))
 	{
 		while (!IsStackEmpty(hAdjacentAreas))
 		{
@@ -151,10 +153,10 @@ public Action:Command_GetAdjacentNavAreas(client, args)
 	}
 	else
 	{
-		if (hAdjacentAreas != INVALID_HANDLE) CloseHandle(hAdjacentAreas);
-		
 		PrintToChat(client, "Found no adjacent areas for area ID %d", iAreaID);
 	}
+	
+	CloseHandle(hAdjacentAreas);
 	
 	return Plugin_Handled;
 }
@@ -187,7 +189,8 @@ public Action:Command_NavMeshCollectSurroundingAreas(client, args)
 	new Handle:hProfiler = CreateProfiler();
 	StartProfiling(hProfiler);
 	
-	new Handle:hNearAreas = NavMesh_CollectSurroundingAreas(iAreaIndex, flMaxDist);
+	new Handle:hNearAreas = CreateStack();
+	NavMesh_CollectSurroundingAreas(hNearAreas, iAreaIndex, flMaxDist);
 	
 	StopProfiling(hProfiler);
 	
@@ -195,7 +198,7 @@ public Action:Command_NavMeshCollectSurroundingAreas(client, args)
 	
 	CloseHandle(hProfiler);
 	
-	if (hNearAreas != INVALID_HANDLE)
+	if (!IsStackEmpty(hNearAreas))
 	{
 		new iAreaCount;
 		while (!IsStackEmpty(hNearAreas))
@@ -204,8 +207,6 @@ public Action:Command_NavMeshCollectSurroundingAreas(client, args)
 			PopStackCell(hNearAreas, iSomething);
 			iAreaCount++;
 		}
-		
-		CloseHandle(hNearAreas);
 		
 		if (client > 0) 
 		{
@@ -216,6 +217,8 @@ public Action:Command_NavMeshCollectSurroundingAreas(client, args)
 			PrintToServer("Collected %d areas in %f seconds.", iAreaCount, flProfileTime);
 		}
 	}
+	
+	CloseHandle(hNearAreas);
 	
 	return Plugin_Handled;
 }
@@ -262,8 +265,10 @@ public Action:Command_GetNavAreasOnGrid(client, args)
 	
 	new y = StringToInt(arg2);
 	
-	new Handle:hAreas = NavMesh_GetAreasOnGrid(x, y);
-	if (hAreas != INVALID_HANDLE)
+	new Handle:hAreas = CreateStack();
+	NavMesh_GetAreasOnGrid(hAreas, x, y);
+	
+	if (!IsStackEmpty(hAreas))
 	{
 		while (!IsStackEmpty(hAreas))
 		{
@@ -272,9 +277,9 @@ public Action:Command_GetNavAreasOnGrid(client, args)
 			
 			ReplyToCommand(client, "%d", iAreaIndex);
 		}
-		
-		CloseHandle(hAreas);
 	}
+	
+	CloseHandle(hAreas);
 	
 	return Plugin_Handled;
 }
