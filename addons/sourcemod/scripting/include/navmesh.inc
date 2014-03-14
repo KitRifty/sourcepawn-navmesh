@@ -233,7 +233,7 @@ native Handle:NavMesh_GetLadders();
 
 native NavMesh_CollectSurroundingAreas(Handle:hStack, iStartAreaIndex, Float:flTravelDistanceLimit=1500.0, Float:flMaxStepUpLimit=StepHeight, Float:flMaxDropDownLimit=100.0);
 
-native bool:NavMesh_BuildPath(iStartAreaIndex, iGoalAreaIndex, Float:flGoalPos[3], Function:iCostFunctor, any:iCostData=INVALID_HANDLE, &iClosestAreaIndex=-1, Float:flMaxPathLength=0.0);
+native bool:NavMesh_BuildPath(iStartAreaIndex, iGoalAreaIndex, const Float:flGoalPos[3], Function:iCostFunctor, any:iCostData=INVALID_HANDLE, &iClosestAreaIndex=-1, Float:flMaxPathLength=0.0);
 
 
 native NavMesh_GetArea(const Float:flPos[3], Float:flBeneathLimit=120.0);
@@ -441,7 +441,7 @@ stock bool:IsWalkableTraceLineClear(const Float:flFrom[3], const Float:flTo[3], 
 
 public bool:TraceFilterWalkableEntities(entity, mask, any:iFlags)
 {
-	return !IsEntityWalkable(entity, iFlags)
+	return !IsEntityWalkable(entity, iFlags);
 }
 
 
