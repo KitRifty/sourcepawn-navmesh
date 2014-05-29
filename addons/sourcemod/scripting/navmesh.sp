@@ -85,6 +85,8 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	CreateNative("NavMesh_GetGridSizeX", Native_NavMeshGetGridSizeX);
 	CreateNative("NavMesh_GetGridSizeY", Native_NavMeshGetGridSizeY);
 	
+	CreateNative("NavMesh_GetGroundHeight", Native_NavMeshGetGroundHeight);
+	
 	CreateNative("NavMeshArea_GetMasterMarker", Native_NavMeshAreaGetMasterMarker);
 	CreateNative("NavMeshArea_ChangeMasterMarker", Native_NavMeshAreaChangeMasterMarker);
 	
@@ -2706,6 +2708,18 @@ public Native_NavMeshAreaGetClosestPointOnArea(Handle:plugin, numParams)
 	GetNativeArray(2, flPos, 3);
 	NavMeshAreaGetClosestPointOnArea(GetNativeCell(1), flPos, flClose);
 	SetNativeArray(3, flClose, 3);
+}
+
+//stock bool:NavMeshGetGroundHeight(const Float:flPos[3], &Float:flHeight, Float:flNormal[3])
+public Native_NavMeshGetGroundHeight(Handle:plugin, numParams)
+{
+	decl Float:flPos[3], Float:flNormal[3];
+	GetNativeArray(1, flPos, 3);
+	new Float:flHeight = Float:GetNativeCellRef(2);
+	new bool:bResult = NavMeshGetGroundHeight(flPos, flHeight, flNormal);
+	SetNativeCellRef(2, flHeight);
+	SetNativeArray(3, flNormal, 3);
+	return bResult;
 }
 
 public Native_NavMeshAreaGetMasterMarker(Handle:plugin, numParams)

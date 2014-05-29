@@ -252,6 +252,9 @@ native NavMesh_GetGridSizeX();
 native NavMesh_GetGridSizeY();
 
 
+native bool:NavMesh_GetGroundHeight(const Float:flPos[3], &Float:flHeight=-1.0, Float:flNormal[3]=NULL_VECTOR);
+
+
 native NavMeshArea_GetFlags(iAreaIndex);
 
 native bool:NavMeshArea_GetCenter(iAreaIndex, Float:flBuffer[3]);
