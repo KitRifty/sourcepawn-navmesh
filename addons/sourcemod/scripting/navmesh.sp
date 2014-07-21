@@ -787,9 +787,80 @@ bool:NavMeshLoad(const String:sMapName[])
 	new Handle:hFile = OpenFile(sNavFilePath, "rb");
 	if (hFile == INVALID_HANDLE)
 	{
-		LogError("Unable to find navigation mesh: %s", sNavFilePath);
-		return false;
+		new EngineVersion:iEngineVersion;
+		new bool:bFound = false;
+		
+		if (GetFeatureStatus(FeatureType_Native, "GetEngineVersion") == FeatureStatus_Available)
+		{
+			iEngineVersion = GetEngineVersion();
+			
+			switch (iEngineVersion)
+			{
+				case Engine_CSGO:
+				{
+					// Search addon directories.
+					new Handle:hDir = OpenDirectory("addons");
+					if (hDir != INVALID_HANDLE)
+					{
+						LogMessage("Couldn't find .nav file in maps folder, checking addon folders...");
+						
+						decl String:sFolderName[PLATFORM_MAX_PATH];
+						decl FileType:iFileType;
+						while (ReadDirEntry(hDir, sFolderName, sizeof(sFolderName), iFileType))
+						{
+							if (iFileType == FileType_Directory)
+							{
+								Format(sNavFilePath, sizeof(sNavFilePath), "addons\\%s\\maps\\%s.nav", sFolderName, sMapName);
+								hFile = OpenFile(sNavFilePath, "rb");
+								if (hFile != INVALID_HANDLE)
+								{
+									bFound = true;
+									break;
+								}
+							}
+						}
+						
+						CloseHandle(hDir);
+					}
+				}
+				case Engine_TF2:
+				{
+					// Search custom directories.
+					new Handle:hDir = OpenDirectory("custom");
+					if (hDir != INVALID_HANDLE)
+					{
+						LogMessage("Couldn't find .nav file in maps folder, checking custom folders...");
+					
+						decl String:sFolderName[PLATFORM_MAX_PATH];
+						decl FileType:iFileType;
+						while (ReadDirEntry(hDir, sFolderName, sizeof(sFolderName), iFileType))
+						{
+							if (iFileType == FileType_Directory)
+							{
+								Format(sNavFilePath, sizeof(sNavFilePath), "custom\\%s\\maps\\%s.nav", sFolderName, sMapName);
+								hFile = OpenFile(sNavFilePath, "rb");
+								if (hFile != INVALID_HANDLE)
+								{
+									bFound = true;
+									break;
+								}
+							}
+						}
+						
+						CloseHandle(hDir);
+					}
+				}
+			}
+		}
+		
+		if (!bFound)
+		{
+			LogMessage(".NAV file for %s could not be found", sMapName);
+			return false;
+		}
 	}
+	
+	LogMessage("Found .NAV file in %s", sNavFilePath);
 	
 	// Get magic number.
 	new iNavMagicNumber;
