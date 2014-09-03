@@ -1,3 +1,7 @@
+NavMesh
+
+===========================
+
 This is basically a SourceMod plugin that can parse .NAV files and make data out of it that
 SourceMod plugins can read from. This plugin by itself doesn't do anything other than read
 data from the .NAV file. Other plugins have to utilize this plugin's features in order for 
