@@ -1851,7 +1851,7 @@ stock NavMeshGetNearestArea(const Float:flPos[3], bool:bAnyZ=false, Float:flMaxD
 							flEndPos[1] = flPos[1];
 							flEndPos[2] = flPos[2] + StepHeight;
 							
-							new Handle:hTrace = TR_TraceRayEx(flPos, flEndPos, MASK_NPCSOLID_BRUSHONLY, RayType_EndPoint);
+							new Handle:hTrace = TR_TraceRayFilterEx(flPos, flEndPos, MASK_NPCSOLID_BRUSHONLY, RayType_EndPoint, TraceRayIgnoreCustom);
 							new Float:flFraction = TR_GetFraction(hTrace);
 							TR_GetEndPosition(flEndPos, hTrace);
 							CloseHandle(hTrace);
@@ -1880,7 +1880,7 @@ stock NavMeshGetNearestArea(const Float:flPos[3], bool:bAnyZ=false, Float:flMaxD
 								flEndPos[1] = flAreaPos[1];
 								flEndPos[2] = flSafePos[2];
 								
-								hTrace = TR_TraceRayEx(flStartPos, flEndPos, MASK_NPCSOLID_BRUSHONLY, RayType_EndPoint);
+								hTrace = TR_TraceRayFilterEx(flStartPos, flEndPos, MASK_NPCSOLID_BRUSHONLY, RayType_EndPoint, TraceRayIgnoreCustom);
 								flFraction = TR_GetFraction(hTrace);
 								CloseHandle(hTrace);
 								
@@ -1894,7 +1894,7 @@ stock NavMeshGetNearestArea(const Float:flPos[3], bool:bAnyZ=false, Float:flMaxD
 							flEndPos[1] = flAreaPos[1];
 							flEndPos[2] = flSafePos[2] + StepHeight;
 							
-							hTrace = TR_TraceRayEx(flSafePos, flEndPos, MASK_NPCSOLID_BRUSHONLY, RayType_EndPoint);
+							hTrace = TR_TraceRayFilterEx(flSafePos, flEndPos, MASK_NPCSOLID_BRUSHONLY, RayType_EndPoint, TraceRayIgnoreCustom);
 							flFraction = TR_GetFraction(hTrace);
 							CloseHandle(hTrace);
 							
@@ -2555,7 +2555,7 @@ stock bool:NavMeshGetGroundHeight(const Float:flPos[3], &Float:flHeight, Float:f
 	
 	while (flTo[2] - flPos[2] < flMaxOffset)
 	{
-		new Handle:hTrace = TR_TraceRayEx(flFrom, flTo, MASK_NPCSOLID_BRUSHONLY, RayType_EndPoint);
+		new Handle:hTrace = TR_TraceRayFilterEx(flFrom, flTo, MASK_NPCSOLID_BRUSHONLY, RayType_EndPoint, TraceRayIgnoreCustom);
 		new Float:flFraction = TR_GetFraction(hTrace);
 		decl Float:flPlaneNormal[3];
 		decl Float:flEndPos[3];
@@ -3006,4 +3006,17 @@ public Native_NavMeshAreaGetLightIntensity(Handle:plugin, numParams)
 public Native_NavMeshLadderGetLength(Handle:plugin, numParams)
 {
 	return _:NavMeshLadderGetLength(GetNativeCell(1));
+}
+public bool:TraceRayIgnoreCustom(entity, mask, any:data)
+{
+	if (entity > 0 && entity <= MaxClients) return false;
+	
+	if (IsValidEdict(entity))
+	{
+		decl String:sClass[64];
+		GetEntityNetClass(entity, sClass, sizeof(sClass));
+		if (StrEqual(sClass, "CTFBaseBoss")) return false;
+	}
+	
+	return true;
 }
