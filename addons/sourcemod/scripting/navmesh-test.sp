@@ -1,22 +1,24 @@
 #include <sourcemod>
 #include <sdktools>
 #include <profiler>
+
+#pragma newdecls required
 #include <navmesh>
 
-#define PLUGIN_VERSION "1.0.1"
+#define PLUGIN_VERSION "1.0.2"
 
-new g_iPathLaserModelIndex = -1;
+int g_iPathLaserModelIndex = -1;
 
-public Plugin:myinfo = 
+public Plugin myinfo = 
 {
     name = "SP-Readable Navigation Mesh Test",
-    author	= "KitRifty",
+    author	= "KitRifty, Benoist3012",
     description	= "Testing plugin of the SP-Readable Navigation Mesh plugin.",
     version = PLUGIN_VERSION,
     url = ""
 }
 
-public OnPluginStart()
+public void OnPluginStart()
 {
 	RegConsoleCmd("sm_navmesh_collectsurroundingareas", Command_NavMeshCollectSurroundingAreas);
 	RegConsoleCmd("sm_navmesh_buildpath", Command_NavMeshBuildPath);
@@ -28,16 +30,16 @@ public OnPluginStart()
 	RegConsoleCmd("sm_navmesh_getadjacentareas", Command_GetAdjacentNavAreas);
 }
 
-public OnMapStart()
+public void OnMapStart()
 {
 	g_iPathLaserModelIndex = PrecacheModel("materials/sprites/laserbeam.vmt");
 }
 
-public Action:Command_GetArea(client, args)
+public Action Command_GetArea(int client,int args)
 {
 	if (!NavMesh_Exists()) return Plugin_Handled;
 
-	decl Float:flEyePos[3], Float:flEyeDir[3], Float:flEndPos[3];
+	float flEyePos[3], flEyeDir[3], flEndPos[3];
 	GetClientEyePosition(client, flEyePos);
 	GetClientEyeAngles(client, flEyeDir);
 	GetAngleVectors(flEyeDir, flEyeDir, NULL_VECTOR, NULL_VECTOR);
@@ -45,7 +47,7 @@ public Action:Command_GetArea(client, args)
 	ScaleVector(flEyeDir, 1000.0);
 	AddVectors(flEyePos, flEyeDir, flEndPos);
 	
-	new Handle:hTrace = TR_TraceRayFilterEx(flEyePos,
+	Handle hTrace = TR_TraceRayFilterEx(flEyePos,
 		flEndPos,
 		MASK_PLAYERSOLID_BRUSHONLY,
 		RayType_EndPoint,
@@ -55,20 +57,19 @@ public Action:Command_GetArea(client, args)
 	TR_GetEndPosition(flEndPos, hTrace);
 	CloseHandle(hTrace);
 	
-	new iAreaIndex = NavMesh_GetArea(flEndPos);
-	new Handle:hAreas = NavMesh_GetAreas();
-	new iAreaID = GetArrayCell(hAreas, iAreaIndex, NavMeshArea_ID);
+	int iAreaIndex = NavMesh_GetArea(flEndPos);
+	Handle hAreas = NavMesh_GetAreas();
+	int iAreaID = GetArrayCell(hAreas, iAreaIndex, NavMeshArea_ID);
 	
 	PrintToChat(client, "Nearest area ID: %d", iAreaID);
 	
 	return Plugin_Handled;
 }
 
-public Action:Command_GetNearestArea(client, args)
+public Action Command_GetNearestArea(int client,int args)
 {
 	if (!NavMesh_Exists()) return Plugin_Handled;
-
-	decl Float:flEyePos[3], Float:flEyeDir[3], Float:flEndPos[3];
+	float flEyePos[3], flEyeDir[3], flEndPos[3];
 	GetClientEyePosition(client, flEyePos);
 	GetClientEyeAngles(client, flEyeDir);
 	GetAngleVectors(flEyeDir, flEyeDir, NULL_VECTOR, NULL_VECTOR);
@@ -76,7 +77,7 @@ public Action:Command_GetNearestArea(client, args)
 	ScaleVector(flEyeDir, 1000.0);
 	AddVectors(flEyePos, flEyeDir, flEndPos);
 	
-	new Handle:hTrace = TR_TraceRayFilterEx(flEyePos,
+	Handle hTrace = TR_TraceRayFilterEx(flEyePos,
 		flEndPos,
 		MASK_PLAYERSOLID_BRUSHONLY,
 		RayType_EndPoint,
@@ -86,15 +87,15 @@ public Action:Command_GetNearestArea(client, args)
 	TR_GetEndPosition(flEndPos, hTrace);
 	CloseHandle(hTrace);
 	
-	new x = NavMesh_WorldToGridX(flEndPos[0]);
-	new y = NavMesh_WorldToGridY(flEndPos[1]);
-	new iGridIndex = x + y * NavMesh_GetGridSizeX();
+	int x = NavMesh_WorldToGridX(flEndPos[0]);
+	int y = NavMesh_WorldToGridY(flEndPos[1]);
+	int iGridIndex = x + y * NavMesh_GetGridSizeX();
 	
-	new iAreaIndex = NavMesh_GetNearestArea(flEndPos);
+	int iAreaIndex = NavMesh_GetNearestArea(flEndPos);
 	if (iAreaIndex != -1)
 	{
-		new Handle:hAreas = NavMesh_GetAreas();
-		new iAreaID = GetArrayCell(hAreas, iAreaIndex, NavMeshArea_ID);
+		Handle hAreas = NavMesh_GetAreas();
+		int iAreaID = GetArrayCell(hAreas, iAreaIndex, NavMeshArea_ID);
 		
 		PrintToChat(client, "Nearest area ID found from spiral out of %d: %d", iGridIndex, iAreaID);
 	}
@@ -106,7 +107,7 @@ public Action:Command_GetNearestArea(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_GetAdjacentNavAreas(client, args)
+public Action Command_GetAdjacentNavAreas(int client,int args)
 {
 	if (!NavMesh_Exists()) return Plugin_Handled;
 	
@@ -116,35 +117,35 @@ public Action:Command_GetAdjacentNavAreas(client, args)
 		return Plugin_Handled;
 	}
 	
-	new Handle:hAreas = NavMesh_GetAreas();
+	Handle hAreas = NavMesh_GetAreas();
 	if (hAreas == INVALID_HANDLE) return Plugin_Handled;
 	
-	decl String:sAreaID[64];
+	char sAreaID[64];
 	GetCmdArg(1, sAreaID, sizeof(sAreaID));
 	
-	new iAreaID = StringToInt(sAreaID);
+	int iAreaID = StringToInt(sAreaID);
 	
-	new iStartAreaIndex = FindValueInArray(hAreas, iAreaID);
+	int iStartAreaIndex = FindValueInArray(hAreas, iAreaID);
 	if (iStartAreaIndex == -1) return Plugin_Handled;
 	
-	decl String:sNavDirection[64];
+	char sNavDirection[64];
 	GetCmdArg(2, sNavDirection, sizeof(sNavDirection));
 	
-	new iNavDirection = StringToInt(sNavDirection);
+	int iNavDirection = StringToInt(sNavDirection);
 	if (iNavDirection >= NAV_DIR_COUNT)
 	{
 		ReplyToCommand(client, "Invalid direction! Direction cannot reach %d!", NAV_DIR_COUNT);
 		return Plugin_Handled;
 	}
 	
-	new Handle:hAdjacentAreas = CreateStack();
+	Handle hAdjacentAreas = CreateStack();
 	NavMeshArea_GetAdjacentList(hAdjacentAreas, iStartAreaIndex, iNavDirection);
 	
 	if (!IsStackEmpty(hAdjacentAreas))
 	{
 		while (!IsStackEmpty(hAdjacentAreas))
 		{
-			new iAreaIndex = -1;
+			int iAreaIndex = -1;
 			PopStackCell(hAdjacentAreas, iAreaIndex);
 			PrintToChat(client, "Found adjacent area (ID: %d) for area ID %d", GetArrayCell(hAreas, iAreaIndex), iAreaID);
 		}
@@ -161,7 +162,7 @@ public Action:Command_GetAdjacentNavAreas(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_NavMeshCollectSurroundingAreas(client, args)
+public Action Command_NavMeshCollectSurroundingAreas(int client,int args)
 {
 	if (args < 2)
 	{
@@ -171,39 +172,39 @@ public Action:Command_NavMeshCollectSurroundingAreas(client, args)
 	
 	if (!NavMesh_Exists()) return Plugin_Handled;
 	
-	new Handle:hAreas = NavMesh_GetAreas();
+	Handle hAreas = NavMesh_GetAreas();
 	if (hAreas == INVALID_HANDLE) return Plugin_Handled;
 	
-	decl String:sAreaID[64];
+	char sAreaID[64];
 	GetCmdArg(1, sAreaID, sizeof(sAreaID));
 	
-	new iAreaIndex = FindValueInArray(hAreas, StringToInt(sAreaID));
+	int iAreaIndex = FindValueInArray(hAreas, StringToInt(sAreaID));
 	
 	if (iAreaIndex == -1 || iAreaIndex == -1) return Plugin_Handled;
 	
-	decl String:sMaxDist[64];
+	char sMaxDist[64];
 	GetCmdArg(2, sMaxDist, sizeof(sMaxDist));
 	
-	new Float:flMaxDist = StringToFloat(sMaxDist);
+	float flMaxDist = StringToFloat(sMaxDist);
 	
-	new Handle:hProfiler = CreateProfiler();
+	Handle hProfiler = CreateProfiler();
 	StartProfiling(hProfiler);
 	
-	new Handle:hNearAreas = CreateStack();
+	Handle hNearAreas = CreateStack();
 	NavMesh_CollectSurroundingAreas(hNearAreas, iAreaIndex, flMaxDist);
 	
 	StopProfiling(hProfiler);
 	
-	new Float:flProfileTime = GetProfilerTime(hProfiler);
+	float flProfileTime = GetProfilerTime(hProfiler);
 	
 	CloseHandle(hProfiler);
 	
 	if (!IsStackEmpty(hNearAreas))
 	{
-		new iAreaCount;
+		int iAreaCount;
 		while (!IsStackEmpty(hNearAreas))
 		{
-			new iSomething;
+			int iSomething;
 			PopStackCell(hNearAreas, iSomething);
 			iAreaCount++;
 		}
@@ -223,56 +224,56 @@ public Action:Command_NavMeshCollectSurroundingAreas(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_NavMeshWorldToGridX(client, args)
+public Action Command_NavMeshWorldToGridX(int client,int args)
 {
 	if (args < 1) return Plugin_Handled;
 	
-	decl String:arg1[32];
+	char arg1[32];
 	GetCmdArg(1, arg1, sizeof(arg1));
 	
-	new Float:flpl = StringToFloat(arg1);
+	float flpl = StringToFloat(arg1);
 	
 	ReplyToCommand(client, "Grid x: %d", NavMesh_WorldToGridX(flpl));
 	
 	return Plugin_Handled;
 }
 
-public Action:Command_NavMeshWorldToGridY(client, args)
+public Action Command_NavMeshWorldToGridY(int client,int args)
 {
 	if (args < 1) return Plugin_Handled;
 	
-	decl String:arg1[32];
+	char arg1[32];
 	GetCmdArg(1, arg1, sizeof(arg1));
 	
-	new Float:flpl = StringToFloat(arg1);
+	float flpl = StringToFloat(arg1);
 	
 	ReplyToCommand(client, "Grid y: %d", NavMesh_WorldToGridY(flpl));
 	
 	return Plugin_Handled;
 }
 
-public Action:Command_GetNavAreasOnGrid(client, args)
+public Action Command_GetNavAreasOnGrid(int client,int args)
 {
 	if (args < 2) return Plugin_Handled;
 	
-	decl String:arg1[32];
+	char arg1[32];
 	GetCmdArg(1, arg1, sizeof(arg1));
 	
-	new x = StringToInt(arg1);
+	int x = StringToInt(arg1);
 	
-	decl String:arg2[32];
+	char arg2[32];
 	GetCmdArg(2, arg2, sizeof(arg2));
 	
-	new y = StringToInt(arg2);
+	int y = StringToInt(arg2);
 	
-	new Handle:hAreas = CreateStack();
+	Handle hAreas = CreateStack();
 	NavMesh_GetAreasOnGrid(hAreas, x, y);
 	
 	if (!IsStackEmpty(hAreas))
 	{
 		while (!IsStackEmpty(hAreas))
 		{
-			new iAreaIndex = -1;
+			int iAreaIndex = -1;
 			PopStackCell(hAreas, iAreaIndex);
 			
 			ReplyToCommand(client, "%d", iAreaIndex);
@@ -284,7 +285,7 @@ public Action:Command_GetNavAreasOnGrid(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_NavMeshBuildPath(client, args)
+public Action Command_NavMeshBuildPath(int client,int args)
 {
 	if (args < 2)
 	{
@@ -294,39 +295,39 @@ public Action:Command_NavMeshBuildPath(client, args)
 	
 	if (!NavMesh_Exists()) return Plugin_Handled;
 	
-	new Handle:hAreas = NavMesh_GetAreas();
+	Handle hAreas = NavMesh_GetAreas();
 	if (hAreas == INVALID_HANDLE) return Plugin_Handled;
 	
-	decl String:sStartAreaID[64], String:sGoalAreaID[64];
+	char sStartAreaID[64], sGoalAreaID[64];
 	GetCmdArg(1, sStartAreaID, sizeof(sStartAreaID));
 	GetCmdArg(2, sGoalAreaID, sizeof(sGoalAreaID));
 	
-	new iStartAreaIndex = FindValueInArray(hAreas, StringToInt(sStartAreaID));
-	new iGoalAreaIndex = FindValueInArray(hAreas, StringToInt(sGoalAreaID));
+	int iStartAreaIndex = FindValueInArray(hAreas, StringToInt(sStartAreaID));
+	int iGoalAreaIndex = FindValueInArray(hAreas, StringToInt(sGoalAreaID));
 	
 	if (iStartAreaIndex == -1 || iGoalAreaIndex == -1) return Plugin_Handled;
 	
-	decl Float:flGoalPos[3];
+	float flGoalPos[3];
 	NavMeshArea_GetCenter(iGoalAreaIndex, flGoalPos);
 	
-	new iColor[4] = { 0, 255, 0, 255 };
+	int iColor[4] = { 0, 255, 0, 255 };
 	
-	new Float:flMaxPathLength = 0.0;
+	float flMaxPathLength = 0.0;
 	if (args > 2)
 	{
-		decl String:sMaxPathLength[64];
+		char sMaxPathLength[64];
 		GetCmdArg(3, sMaxPathLength, sizeof(sMaxPathLength));
 		flMaxPathLength = StringToFloat(sMaxPathLength);
 		
 		if (flMaxPathLength < 0.0) return Plugin_Handled;
 	}
 	
-	new iClosestAreaIndex = 0;
+	int iClosestAreaIndex = 0;
 	
-	new Handle:hProfiler = CreateProfiler();
+	Handle hProfiler = CreateProfiler();
 	StartProfiling(hProfiler);
 	
-	new bool:bBuiltPath = NavMesh_BuildPath(iStartAreaIndex, 
+	bool bBuiltPath = NavMesh_BuildPath(iStartAreaIndex, 
 		iGoalAreaIndex,
 		flGoalPos,
 		NavMeshShortestPathCost,
@@ -336,7 +337,7 @@ public Action:Command_NavMeshBuildPath(client, args)
 	
 	StopProfiling(hProfiler);
 	
-	new Float:flProfileTime = GetProfilerTime(hProfiler);
+	float flProfileTime = GetProfilerTime(hProfiler);
 	
 	CloseHandle(hProfiler);
 	
@@ -344,20 +345,20 @@ public Action:Command_NavMeshBuildPath(client, args)
 	{
 		PrintToChat(client, "Path built!\nBuild path time: %f\nReached goal: %d", flProfileTime, bBuiltPath);
 		
-		new iTempAreaIndex = iClosestAreaIndex;
-		new iParentAreaIndex = NavMeshArea_GetParent(iTempAreaIndex);
-		new iNavDirection;
-		new Float:flHalfWidth;
+		int iTempAreaIndex = iClosestAreaIndex;
+		int iParentAreaIndex = NavMeshArea_GetParent(iTempAreaIndex);
+		int iNavDirection;
+		float flHalfWidth;
 		
-		decl Float:flCenterPortal[3], Float:flClosestPoint[3];
+		float flCenterPortal[3], flClosestPoint[3];
 		
-		new Handle:hPositions = CreateArray(3);
+		Handle hPositions = CreateArray(3);
 		
 		PushArrayArray(hPositions, flGoalPos, 3);
 		
 		while (iParentAreaIndex != -1)
 		{
-			decl Float:flTempAreaCenter[3], Float:flParentAreaCenter[3];
+			float flTempAreaCenter[3], flParentAreaCenter[3];
 			NavMeshArea_GetCenter(iTempAreaIndex, flTempAreaCenter);
 			NavMeshArea_GetCenter(iParentAreaIndex, flParentAreaCenter);
 			
@@ -373,13 +374,13 @@ public Action:Command_NavMeshBuildPath(client, args)
 			iParentAreaIndex = NavMeshArea_GetParent(iTempAreaIndex);
 		}
 		
-		decl Float:flStartPos[3];
+		float flStartPos[3];
 		NavMeshArea_GetCenter(iStartAreaIndex, flStartPos);
 		PushArrayArray(hPositions, flStartPos, 3);
 		
-		for (new i = GetArraySize(hPositions) - 1; i > 0; i--)
+		for (int i = GetArraySize(hPositions) - 1; i > 0; i--)
 		{
-			decl Float:flFromPos[3], Float:flToPos[3];
+			float flFromPos[3], flToPos[3];
 			GetArrayArray(hPositions, i, flFromPos, 3);
 			GetArrayArray(hPositions, i - 1, flToPos, 3);
 			
@@ -408,7 +409,7 @@ public Action:Command_NavMeshBuildPath(client, args)
 	return Plugin_Handled;
 }
 
-public bool:TraceRayDontHitEntity(entity, mask, any:data)
+public bool TraceRayDontHitEntity(int entity,int mask, any data)
 {
 	if (entity == data) return false;
 	return true;
