@@ -1580,8 +1580,11 @@ void NavMeshGridAllocate(float flMinX, float flMaxX, float flMinY, float flMaxY)
 
 void NavMeshGridFinalize()
 {
-	int iAreaCount = GetArraySize(g_hNavMeshAreas);
-	bool[] bAreaInGrid = new bool[iAreaCount];
+	//int iAreaCount = GetArraySize(g_hNavMeshAreas);
+	//bool[] bAreaInGrid = new bool[iAreaCount];
+	//Apparently the lines above make the server goes crazy
+	bool bAllIn = true;
+	int iErrorAreaIndex = -1;
 	
 	SortADTArrayCustom(g_hNavMeshGridLists, SortNavMeshGridLists);
 	
@@ -1600,29 +1603,18 @@ void NavMeshGridFinalize()
 				int iAreaIndex = GetArrayCell(g_hNavMeshGridLists, iListIndex);
 				if (iAreaIndex != -1)
 				{
-					bAreaInGrid[iAreaIndex] = true;
+					
 				}
 				else
 				{
+					if(iErrorAreaIndex==-1)
+						iErrorAreaIndex = iAreaIndex;
+					bAllIn = false;
 					LogError("Warning! Invalid nav area found in list of grid index %d!", iGridIndex);
 				}
 			}
 		}
 	}
-	
-	bool bAllIn = true;
-	int iErrorAreaIndex = -1;
-	
-	for (int iAreaIndex = 0; iAreaIndex < iAreaCount; iAreaIndex++)
-	{
-		if (!bAreaInGrid[iAreaIndex])
-		{
-			iErrorAreaIndex = iAreaIndex;
-			bAllIn = false;
-			break;
-		}
-	}
-	
 	if (bAllIn)
 	{
 		LogMessage("All nav areas parsed into the grid!");
