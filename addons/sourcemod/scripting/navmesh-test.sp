@@ -25,7 +25,7 @@ public void OnPluginStart()
 	RegConsoleCmd("sm_navmesh_worldtogridx", Command_NavMeshWorldToGridX);
 	RegConsoleCmd("sm_navmesh_worldtogridy", Command_NavMeshWorldToGridY);
 	RegConsoleCmd("sm_navmesh_getareasongrid", Command_GetNavAreasOnGrid);
-	RegConsoleCmd("sm_navmesh_getarea", Command_GetArea);
+	RegConsoleCmd("sm_navmesh_getareanavindex", Command_GetArea);
 	RegConsoleCmd("sm_navmesh_getnearestarea", Command_GetNearestArea);
 	RegConsoleCmd("sm_navmesh_getadjacentareas", Command_GetAdjacentNavAreas);
 }
@@ -57,9 +57,7 @@ public Action Command_GetArea(int client,int args)
 	TR_GetEndPosition(flEndPos, hTrace);
 	CloseHandle(hTrace);
 	
-	int iAreaIndex = NavMesh_GetArea(flEndPos);
-	Handle hAreas = NavMesh_GetAreas();
-	int iAreaID = GetArrayCell(hAreas, iAreaIndex, NavMeshArea_ID);
+	int iAreaID = NavMesh_GetNearestArea(flEndPos);
 	
 	PrintToChat(client, "Nearest area ID: %d", iAreaID);
 	
@@ -322,6 +320,11 @@ public Action Command_NavMeshBuildPath(int client,int args)
 		if (flMaxPathLength < 0.0) return Plugin_Handled;
 	}
 	
+	float flMaxStepSize = 0.0;
+	char sMaxStepSize[64];
+	GetCmdArg(4, sMaxStepSize, sizeof(sMaxStepSize));
+	flMaxStepSize = StringToFloat(sMaxStepSize);
+	
 	int iClosestAreaIndex = 0;
 	
 	Handle hProfiler = CreateProfiler();
@@ -333,7 +336,8 @@ public Action Command_NavMeshBuildPath(int client,int args)
 		NavMeshShortestPathCost,
 		_,
 		iClosestAreaIndex,
-		flMaxPathLength);
+		flMaxPathLength,
+		flMaxStepSize);
 	
 	StopProfiling(hProfiler);
 	

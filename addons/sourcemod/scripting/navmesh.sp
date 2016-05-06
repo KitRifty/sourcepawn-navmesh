@@ -308,7 +308,8 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 	Function iCostFunction,
 	any iCostData=INVALID_HANDLE,
 	int &iClosestAreaIndex=-1,
-	float flMaxPathLength=0.0)
+	float flMaxPathLength=0.0,
+	float flMaxAng=0.0)
 {
 	if (!g_bNavMeshBuilt) 
 	{
@@ -425,7 +426,6 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 					{
 						hFloorList = NavMeshAreaGetAdjacentList(iAreaIndex, iSearchDir);
 					}
-					
 					continue;
 				}
 				
@@ -506,6 +506,27 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 				continue;
 			}
 			
+			float flNewAreaCenter[3];
+			NavMeshAreaGetCenter(iNewAreaIndex, flNewAreaCenter);
+			
+			if (flMaxAng != 0.0)
+			{
+				float flAreaCenter[3];
+				NavMeshAreaGetCenter(iAreaIndex, flAreaCenter);
+				//We don't have to look for the step size, if we go off the clip.
+				if(flAreaCenter[2] <= flNewAreaCenter[2])
+				{
+					float flH = GetVectorDistance(flNewAreaCenter, flAreaCenter);
+					float flFakePoint[3];
+					flFakePoint[0] = flNewAreaCenter[0];
+					flFakePoint[1] = flNewAreaCenter[1];
+					flFakePoint[2] = flAreaCenter[2];
+					float flA = GetVectorDistance(flFakePoint, flAreaCenter);
+					if(flMaxAng < (180*(Cosine(flA/flH))/PI))
+						continue;
+				}
+			}
+			
 			int iNewCostSoFar;
 			
 			Call_StartFunction(hCostFunctionPlugin, iCostFunction);
@@ -515,9 +536,6 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 			Call_Finish(iNewCostSoFar);
 			
 			if (iNewCostSoFar < 0) continue;
-			
-			float flNewAreaCenter[3];
-			NavMeshAreaGetCenter(iNewAreaIndex, flNewAreaCenter);
 			
 			if (bHaveMaxPathLength)
 			{
@@ -2722,7 +2740,8 @@ public int Native_NavMeshBuildPath(Handle plugin,int numParams)
 		view_as<Function>(GetNativeCell(4)),
 		GetNativeCell(5),
 		iClosestIndex,
-		view_as<float>(GetNativeCell(7)));
+		view_as<float>(GetNativeCell(7)),
+		view_as<float>(GetNativeCell(8)));
 		
 	SetNativeCellRef(6, iClosestIndex);
 	return bResult;
