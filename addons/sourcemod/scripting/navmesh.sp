@@ -92,6 +92,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error,int err_max)
 	CreateNative("NavMeshArea_GetMasterMarker", Native_NavMeshAreaGetMasterMarker);
 	CreateNative("NavMeshArea_ChangeMasterMarker", Native_NavMeshAreaChangeMasterMarker);
 	
+	CreateNative("NavMeshArea_IsConnected", Native_NavMeshAreaIsConnected);
 	CreateNative("NavMeshArea_GetFlags", Native_NavMeshAreaGetFlags);
 	CreateNative("NavMeshArea_GetCenter", Native_NavMeshAreaGetCenter);
 	CreateNative("NavMeshArea_GetAdjacentList", Native_NavMeshAreaGetAdjacentList);
@@ -299,6 +300,22 @@ Handle NavMeshCollectSurroundingAreas(int iStartAreaIndex,
 	}
 	
 	return hNearAreasList;
+}
+
+bool NavMeshAreaIsConnected(int iAreaIndex1,int iAreaIndex2)
+{
+	Handle hAreas = NavMeshCollectSurroundingAreas(iAreaIndex1,100000.0,1000.0,1000.0);			
+	while (!IsStackEmpty(hAreas))
+	{
+		int iAreaIndex = -1;
+		PopStackCell(hAreas, iAreaIndex);
+		if(iAreaIndex==iAreaIndex2)
+		{
+			CloseHandle(hAreas);
+			return true;
+		}
+	}
+	return false;
 }
 
 bool NavMeshBuildPath(int iStartAreaIndex,
@@ -2698,6 +2715,13 @@ public int Native_NavMeshGetLadders(Handle plugin,int numParams)
 	}
 	
 	return view_as<int>(g_hNavMeshLadders);
+}
+
+public int Native_NavMeshAreaIsConnected(Handle plugin,int numParams)
+{
+	int iStartAreaIndex = GetNativeCell(1);
+	int iEndAreaIndex = GetNativeCell(2);
+	return NavMeshAreaIsConnected(iStartAreaIndex,iEndAreaIndex);
 }
 
 public int Native_NavMeshCollectSurroundingAreas(Handle plugin,int numParams)
