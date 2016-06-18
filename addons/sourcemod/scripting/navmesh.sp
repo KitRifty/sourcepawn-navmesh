@@ -3059,7 +3059,8 @@ public bool TraceRayIgnoreCustom(int entity,int mask, any data)
 	{
 		char sClass[64];
 		GetEntityNetClass(entity, sClass, sizeof(sClass));
-		if (StrEqual(sClass, "CTFBaseBoss")) return false;
+		if (StrEqual(sClass, "CFuncRespawnRoomVisualizer")) return false;
+		else if (StrEqual(sClass, "CTFBaseBoss")) return false;
 	}
 	
 	return true;
