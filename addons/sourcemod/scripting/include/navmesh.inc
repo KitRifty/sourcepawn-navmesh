@@ -234,7 +234,7 @@ native Handle NavMesh_GetLadders();
 
 native int NavMesh_CollectSurroundingAreas(Handle hStack,int iStartAreaIndex, float flTravelDistanceLimit=1500.0, float flMaxStepUpLimit=StepHeight, float flMaxDropDownLimit=100.0);
 
-native bool NavMesh_BuildPath(int iStartAreaIndex,int iGoalAreaIndex, const float flGoalPos[3], Function iCostFunctor, any iCostData=INVALID_HANDLE,int &iClosestAreaIndex=-1, float flMaxPathLength=0.0, float flMaxStepSize=0.0);
+native bool NavMesh_BuildPath(int iStartAreaIndex,int iGoalAreaIndex, const float flGoalPos[3], Function iCostFunctor, any iCostData=INVALID_HANDLE,int &iClosestAreaIndex=-1, float flMaxPathLength=0.0, float flMaxAng=0.0, bool bIgnoreBlockedNav = false);
 
 
 native int NavMesh_GetArea(const float flPos[3], float flBeneathLimit=120.0);
