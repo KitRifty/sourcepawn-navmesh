@@ -326,7 +326,8 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 	any iCostData=INVALID_HANDLE,
 	int &iClosestAreaIndex=-1,
 	float flMaxPathLength=0.0,
-	float flMaxAng=0.0)
+	float flMaxAng=0.0,
+	bool bIgnoreBlockedNav = false)
 {
 	if (!g_bNavMeshBuilt) 
 	{
@@ -390,7 +391,7 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 	{
 		int iAreaIndex = NavMeshAreaPopOpenList();
 		
-		if (view_as<bool>(GetArrayCell(g_hNavMeshAreas, iAreaIndex, NavMeshArea_Blocked))) 
+		if (!bIgnoreBlockedNav && view_as<bool>(GetArrayCell(g_hNavMeshAreas, iAreaIndex, NavMeshArea_Blocked))) 
 		{
 			// Don't consider blocked areas.
 			continue;
@@ -2757,7 +2758,8 @@ public int Native_NavMeshBuildPath(Handle plugin,int numParams)
 		GetNativeCell(5),
 		iClosestIndex,
 		view_as<float>(GetNativeCell(7)),
-		view_as<float>(GetNativeCell(8)));
+		view_as<float>(GetNativeCell(8)),
+		view_as<bool>(GetNativeCell(9)));
 		
 	SetNativeCellRef(6, iClosestIndex);
 	return bResult;
