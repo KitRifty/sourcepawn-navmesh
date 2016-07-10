@@ -518,7 +518,7 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 				continue;
 			}
 			
-			if (view_as<bool>(GetArrayCell(g_hNavMeshAreas, iNewAreaIndex, NavMeshArea_Blocked))) 
+			if (!bIgnoreBlockedNav && view_as<bool>(GetArrayCell(g_hNavMeshAreas, iNewAreaIndex, NavMeshArea_Blocked))) 
 			{
 				// Don't consider blocked areas.
 				continue;
