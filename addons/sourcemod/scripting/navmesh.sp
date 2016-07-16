@@ -327,7 +327,8 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 	int &iClosestAreaIndex=-1,
 	float flMaxPathLength=0.0,
 	float flMaxAng=0.0,
-	bool bIgnoreBlockedNav = false)
+	bool bIgnoreBlockedNav = false,
+	float flStepSize=0.0)
 {
 	if (!g_bNavMeshBuilt) 
 	{
@@ -522,6 +523,12 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 			{
 				// Don't consider blocked areas.
 				continue;
+			}
+			
+			if (flStepSize > 0.0)
+			{
+				float flDeltaZ = NavMeshAreaComputeAdjacentConnectionHeightChange(iAreaIndex, iNewAreaIndex);
+				if (flDeltaZ > flStepSize) continue;
 			}
 			
 			float flNewAreaCenter[3];
@@ -2759,7 +2766,8 @@ public int Native_NavMeshBuildPath(Handle plugin,int numParams)
 		iClosestIndex,
 		view_as<float>(GetNativeCell(7)),
 		view_as<float>(GetNativeCell(8)),
-		view_as<bool>(GetNativeCell(9)));
+		view_as<bool>(GetNativeCell(9)),
+		view_as<float>(GetNativeCell(10)));
 		
 	SetNativeCellRef(6, iClosestIndex);
 	return bResult;
