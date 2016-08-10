@@ -485,7 +485,7 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 	any iCostData=0,
 	int &iClosestAreaIndex=-1,
 	float flMaxPathLength=0.0,
-	float flMaxStepSize=18.0)
+	float flMaxStepSize=0.0)
 {
 	if (!g_bNavMeshBuilt) 
 	{
@@ -694,8 +694,11 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 			
 			if (iNewCostSoFar < 0) continue;
 			
-			float flDeltaZ = NavMeshAreaComputeAdjacentConnectionHeightChange(iNewAreaIndex, iAreaIndex);
-			if (flDeltaZ > flMaxStepSize) continue;
+			if (flMaxStepSize > 0.0)
+			{
+				float flDeltaZ = NavMeshAreaComputeAdjacentConnectionHeightChange(iAreaIndex, iNewAreaIndex);
+				if (flDeltaZ > flMaxStepSize) continue;
+			}
 			
 			float flNewAreaCenter[3];
 			NavMeshAreaGetCenter(iNewAreaIndex, flNewAreaCenter);
