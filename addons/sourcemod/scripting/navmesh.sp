@@ -690,6 +690,7 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 			Call_PushCell(iNewAreaIndex);
 			Call_PushCell(iAreaIndex);
 			Call_PushCell(iLadderIndex);
+			Call_PushCell(iCostData);
 			Call_Finish(iNewCostSoFar);
 			
 			if (iNewCostSoFar < 0) continue;
