@@ -1206,9 +1206,8 @@ bool NavMeshLoad(const char[] sMapName)
 			g_hNavMeshAreas.Set(iAreaIndex, false, NavMeshArea_Blocked);
 			g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_NearSearchMarker);
 
-			int iAreaID = 0;
+			int iAreaID = -1;
 			ReadFileCell(hFile, iAreaID, UNSIGNED_INT_BYTE_SIZE);
-			
 			g_hNavMeshAreas.Set(iAreaIndex, iAreaID, NavMeshArea_ID);
 
 			char szAreaID[16];
@@ -1473,10 +1472,6 @@ bool NavMeshLoad(const char[] sMapName)
 						
 						int iLadderConnectionIndex = g_hNavMeshAreaLadderConnections.Push(iLadderConnectionID);
 						g_hNavMeshAreaLadderConnections.Set(iLadderConnectionIndex, iLadderDirection, NavMeshLadderConnection_Direction);
-						
-						char szLadderID[16];
-						IntToString(iLadderConnectionID, szLadderID, 16);
-						g_hNavMeshLadderIdToIndexMap.SetValue(szLadderID, iLadderConnectionIndex);
 
 						iLadderConnectionsEndIndex = g_AreaLadderConnectionsListStartIndex++;
 
@@ -1576,64 +1571,27 @@ bool NavMeshLoad(const char[] sMapName)
 	
 	NavMeshGridFinalize();
 	
-	int iLadderCount;
+	int iLadderCount = 0;
 	ReadFileCell(hFile, iLadderCount, UNSIGNED_INT_BYTE_SIZE);
 	
+	LogMessage("Ladder count: %d", iLadderCount);
+
 	if (iLadderCount > 0)
 	{
-		for (int i = 0; i < iLadderCount; i++)
+		Profiler profiler = new Profiler();
+		profiler.Start();
+
+		g_hNavMeshLadders.Resize(iLadderCount);
+
+		for (int iLadderIndex = 0; iLadderIndex < iLadderCount; iLadderIndex++)
 		{
-			int iLadderID;
-			ReadFileCell(hFile, iLadderID, UNSIGNED_INT_BYTE_SIZE);
-			
-			float flLadderWidth;
-			ReadFileCell(hFile, view_as<int>(flLadderWidth), FLOAT_BYTE_SIZE);
-			
-			float flLadderTopX; float flLadderTopY; float flLadderTopZ; float flLadderBottomX; float flLadderBottomY; float flLadderBottomZ;
-			ReadFileCell(hFile, view_as<int>(flLadderTopX), FLOAT_BYTE_SIZE);
-			ReadFileCell(hFile, view_as<int>(flLadderTopY), FLOAT_BYTE_SIZE);
-			ReadFileCell(hFile, view_as<int>(flLadderTopZ), FLOAT_BYTE_SIZE);
-			ReadFileCell(hFile, view_as<int>(flLadderBottomX), FLOAT_BYTE_SIZE);
-			ReadFileCell(hFile, view_as<int>(flLadderBottomY), FLOAT_BYTE_SIZE);
-			ReadFileCell(hFile, view_as<int>(flLadderBottomZ), FLOAT_BYTE_SIZE);
-			
-			float flLadderLength;
-			ReadFileCell(hFile, view_as<int>(flLadderLength), FLOAT_BYTE_SIZE);
-			
-			int iLadderDirection;
-			ReadFileCell(hFile, iLadderDirection, UNSIGNED_INT_BYTE_SIZE);
-			
-			int iLadderTopForwardAreaID;
-			ReadFileCell(hFile, iLadderTopForwardAreaID, UNSIGNED_INT_BYTE_SIZE);
-			
-			int iLadderTopLeftAreaID;
-			ReadFileCell(hFile, iLadderTopLeftAreaID, UNSIGNED_INT_BYTE_SIZE);
-			
-			int iLadderTopRightAreaID;
-			ReadFileCell(hFile, iLadderTopRightAreaID, UNSIGNED_INT_BYTE_SIZE);
-			
-			int iLadderTopBehindAreaID;
-			ReadFileCell(hFile, iLadderTopBehindAreaID, UNSIGNED_INT_BYTE_SIZE);
-			
-			int iLadderBottomAreaID;
-			ReadFileCell(hFile, iLadderBottomAreaID, UNSIGNED_INT_BYTE_SIZE);
-			
-			int iLadderIndex = g_hNavMeshLadders.Push(iLadderID);
-			g_hNavMeshLadders.Set(iLadderIndex, flLadderWidth, NavMeshLadder_Width);
-			g_hNavMeshLadders.Set(iLadderIndex, flLadderLength, NavMeshLadder_Length);
-			g_hNavMeshLadders.Set(iLadderIndex, flLadderTopX, NavMeshLadder_TopX);
-			g_hNavMeshLadders.Set(iLadderIndex, flLadderTopY, NavMeshLadder_TopY);
-			g_hNavMeshLadders.Set(iLadderIndex, flLadderTopZ, NavMeshLadder_TopZ);
-			g_hNavMeshLadders.Set(iLadderIndex, flLadderBottomX, NavMeshLadder_BottomX);
-			g_hNavMeshLadders.Set(iLadderIndex, flLadderBottomY, NavMeshLadder_BottomY);
-			g_hNavMeshLadders.Set(iLadderIndex, flLadderBottomZ, NavMeshLadder_BottomZ);
-			g_hNavMeshLadders.Set(iLadderIndex, iLadderDirection, NavMeshLadder_Direction);
-			g_hNavMeshLadders.Set(iLadderIndex, iLadderTopForwardAreaID, NavMeshLadder_TopForwardAreaIndex);
-			g_hNavMeshLadders.Set(iLadderIndex, iLadderTopLeftAreaID, NavMeshLadder_TopLeftAreaIndex);
-			g_hNavMeshLadders.Set(iLadderIndex, iLadderTopRightAreaID, NavMeshLadder_TopRightAreaIndex);
-			g_hNavMeshLadders.Set(iLadderIndex, iLadderTopBehindAreaID, NavMeshLadder_TopBehindAreaIndex);
-			g_hNavMeshLadders.Set(iLadderIndex, iLadderBottomAreaID, NavMeshLadder_BottomAreaIndex);
+			NavMeshLoadLadder(hFile, iLadderIndex);
 		}
+
+		profiler.Stop();
+		LogMessage("Parsed %d ladders in %f seconds.", iAreaCount, profiler.Time);
+
+		delete profiler;
 	}
 	
 	g_iNavMeshMagicNumber = iNavMagicNumber;
@@ -1719,7 +1677,7 @@ bool NavMeshLoad(const char[] sMapName)
 	return true;
 }
 
-int NavMeshLoadHidingSpot(Handle hFile, int iOwnerAreaIndex)
+int NavMeshLoadHidingSpot(File hFile, int iOwnerAreaIndex)
 {
 	int iHidingSpotID;
 	ReadFileCell(hFile, iHidingSpotID, UNSIGNED_INT_BYTE_SIZE);
@@ -1749,7 +1707,7 @@ int NavMeshLoadHidingSpot(Handle hFile, int iOwnerAreaIndex)
 }
 
 // Loads game-specific custom data.
-bool NavMeshLoadAreaData(Handle hFile, int iAreaIndex, int iNavVersion, int iNavSubVersion)
+bool NavMeshLoadAreaData(File hFile, int iAreaIndex, int iNavVersion, int iNavSubVersion)
 {
 	switch (GetEngineVersion())
 	{
@@ -1763,6 +1721,69 @@ bool NavMeshLoadAreaData(Handle hFile, int iAreaIndex, int iNavVersion, int iNav
 		
 		// TODO: Insert other game-specific data stored in the area.
 	}
+
+	return true;
+}
+
+bool NavMeshLoadLadder(File hFile, int iLadderIndex)
+{
+	int iLadderID = -1;
+	ReadFileCell(hFile, iLadderID, UNSIGNED_INT_BYTE_SIZE);
+	g_hNavMeshLadders.Set(iLadderIndex, iLadderID, NavMeshLadder_ID);
+	
+	char szLadderID[16];
+	IntToString(iLadderID, szLadderID, 16);
+	g_hNavMeshLadderIdToIndexMap.SetValue(szLadderID, iLadderIndex);
+
+	float flLadderWidth;
+	ReadFileCell(hFile, view_as<int>(flLadderWidth), FLOAT_BYTE_SIZE);
+	g_hNavMeshLadders.Set(iLadderIndex, flLadderWidth, NavMeshLadder_Width);
+	
+	float flLadderTopX; float flLadderTopY; float flLadderTopZ;
+	ReadFileCell(hFile, view_as<int>(flLadderTopX), FLOAT_BYTE_SIZE);
+	ReadFileCell(hFile, view_as<int>(flLadderTopY), FLOAT_BYTE_SIZE);
+	ReadFileCell(hFile, view_as<int>(flLadderTopZ), FLOAT_BYTE_SIZE);
+	g_hNavMeshLadders.Set(iLadderIndex, flLadderTopX, NavMeshLadder_TopX);
+	g_hNavMeshLadders.Set(iLadderIndex, flLadderTopY, NavMeshLadder_TopY);
+	g_hNavMeshLadders.Set(iLadderIndex, flLadderTopZ, NavMeshLadder_TopZ);
+
+	float flLadderBottomX; float flLadderBottomY; float flLadderBottomZ;
+	ReadFileCell(hFile, view_as<int>(flLadderBottomX), FLOAT_BYTE_SIZE);
+	ReadFileCell(hFile, view_as<int>(flLadderBottomY), FLOAT_BYTE_SIZE);
+	ReadFileCell(hFile, view_as<int>(flLadderBottomZ), FLOAT_BYTE_SIZE);
+	g_hNavMeshLadders.Set(iLadderIndex, flLadderBottomX, NavMeshLadder_BottomX);
+	g_hNavMeshLadders.Set(iLadderIndex, flLadderBottomY, NavMeshLadder_BottomY);
+	g_hNavMeshLadders.Set(iLadderIndex, flLadderBottomZ, NavMeshLadder_BottomZ);
+
+	float flLadderLength;
+	ReadFileCell(hFile, view_as<int>(flLadderLength), FLOAT_BYTE_SIZE);
+	g_hNavMeshLadders.Set(iLadderIndex, flLadderLength, NavMeshLadder_Length);
+
+	int iLadderDirection;
+	ReadFileCell(hFile, iLadderDirection, UNSIGNED_INT_BYTE_SIZE);
+	g_hNavMeshLadders.Set(iLadderIndex, iLadderDirection, NavMeshLadder_Direction);
+
+	int iLadderTopForwardAreaID;
+	ReadFileCell(hFile, iLadderTopForwardAreaID, UNSIGNED_INT_BYTE_SIZE);
+	g_hNavMeshLadders.Set(iLadderIndex, iLadderTopForwardAreaID, NavMeshLadder_TopForwardAreaIndex);
+
+	int iLadderTopLeftAreaID;
+	ReadFileCell(hFile, iLadderTopLeftAreaID, UNSIGNED_INT_BYTE_SIZE);
+	g_hNavMeshLadders.Set(iLadderIndex, iLadderTopLeftAreaID, NavMeshLadder_TopLeftAreaIndex);
+
+	int iLadderTopRightAreaID;
+	ReadFileCell(hFile, iLadderTopRightAreaID, UNSIGNED_INT_BYTE_SIZE);
+	g_hNavMeshLadders.Set(iLadderIndex, iLadderTopRightAreaID, NavMeshLadder_TopRightAreaIndex);
+
+	int iLadderTopBehindAreaID;
+	ReadFileCell(hFile, iLadderTopBehindAreaID, UNSIGNED_INT_BYTE_SIZE);
+	g_hNavMeshLadders.Set(iLadderIndex, iLadderTopBehindAreaID, NavMeshLadder_TopBehindAreaIndex);
+
+	int iLadderBottomAreaID;
+	ReadFileCell(hFile, iLadderBottomAreaID, UNSIGNED_INT_BYTE_SIZE);
+	g_hNavMeshLadders.Set(iLadderIndex, iLadderBottomAreaID, NavMeshLadder_BottomAreaIndex);
+
+	return true;
 }
 
 void NavMeshDestroy()
