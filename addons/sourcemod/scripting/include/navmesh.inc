@@ -77,6 +77,12 @@ typedef NavPathCostFunctor = function int(CNavArea area, CNavArea from, CNavLadd
 
 // NavMesh
 
+/**
+ * Called when the plugin finishes loading the navigation mesh, even if it fails. Called within the
+ * OnMapStart() forward.
+ * 
+ * @param success		true if sucessful, false otherwise.
+ */
 forward Action NavMesh_PostLoad(bool success);
 
 native bool NavMesh_Exists();
@@ -279,16 +285,41 @@ methodmap CNavArea
 		return NavMeshArea_IsOverlappingPoint(this.Index, point, tolerance);
 	}
 	
+	/**
+	 * Returns whether or not the area overlaps the given area. The Z-axis is not checked.
+	 *
+	 * @param	area	The area to check.
+	 * @return			true if overlapping, false otherwise.
+	 */
 	public bool IsOverlappingArea( CNavArea area )
 	{
 		return NavMeshArea_IsOverlappingArea(this.Index, area.Index);
 	}
 	
+	/**
+	 * Returns whether or not the given point is contained by the area.
+	 *
+	 * Note: If the point overlaps the area, the given point can be at most StepHeight units above the 
+	 * area to still be considered "contained".
+	 *
+	 * @param	point	The point to check.
+	 * @return			true if the point is contained by the area, false otherwise.
+	 */
 	public bool Contains( const float point[3] )
 	{
 		return NavMeshArea_Contains(this.Index, point);
 	}
 	
+	/**
+	 * Returns whether or not if there are no bi-directional links in the given direction of the area.
+	 * 
+	 * Note: For the longest time this only checked for presence of an outgoing connection, regardless
+	 * if the connection was two-way or not. This has been recently changed to properly reflect
+	 * CNavArea::IsEdge( NavDirType dir )'s functionality.
+	 *
+	 * @param	dir		Direction to check.
+	 * @return			true if there are no bi-directional connections; false otherwise.
+	 */
 	public bool IsEdge( int dir )
 	{
 		return NavMeshArea_IsEdge(this.Index, dir);
@@ -299,6 +330,14 @@ methodmap CNavArea
 		NavMeshArea_GetRandomPoint(this.Index, buffer);
 	}
 	
+	/**
+	 * Returns whether or not there exists a bi-directional/outgoing one-way link to targetArea in
+	 * the provided direction.
+	 *
+	 * @param	targetArea	The area to check for.
+	 * @param	dir			The direction to check. If NAV_DIR_COUNT is the direction, all directions will be checked.
+	 * @return				true if there exists a link, false otherwise.
+	 */
 	public bool IsConnected( CNavArea targetArea, int dir )
 	{
 		return NavMeshArea_IsConnected(this.Index, targetArea.Index, dir);
@@ -309,11 +348,29 @@ methodmap CNavArea
 		NavMeshArea_GetClosestPointOnArea(this.Index, pos, buffer);
 	}
 	
+	/**
+	 * Retrieves all bi-directional and one-way OUTGOING connections from this area and stores CNavArea's in the
+	 * provided buffer.
+	 *
+	 * Note: This does NOT include one-way INCOMING connections. Use GetIncomingConnections() for that.
+	 *
+	 * @param	dir		Direction to check.
+	 * @param	buffer	An ArrayStack to insert the CNavArea's in.
+	 */
 	public void GetAdjacentAreas( int dir, ArrayStack buffer )
 	{
 		NavMeshArea_GetAdjacentList( buffer, this.Index, dir );
 	}
 	
+	/**
+	 * Returns the amount of bi-directional and one-way OUTGOING connections from this area in the provided
+	 * direction.
+	 *
+	 * Note: This does NOT count one-way INCOMING connections.
+	 *
+	 * @param	dir		Direction to check.
+	 * @return			The amount of connections.
+	 */
 	public int GetAdjacentCount( int dir )
 	{
 		ArrayStack buffer = new ArrayStack();
@@ -352,6 +409,18 @@ methodmap CNavArea
 		CNavArea area = CNavArea( list.Get( GetRandomInt(0, list.Length - 1) ) );
 		delete list;
 		return area;
+	}
+
+	/**
+	 * Retrieves all one-way INCOMING connections to this area and stores CNavArea's in the provided
+	 * buffer.
+	 *
+	 * @param	dir		Direction to check.
+	 * @param	buffer	An ArrayStack to insert the CNavArea's in.
+	 */
+	public void GetIncomingConnections( int dir, ArrayStack buffer )
+	{
+		NavMeshArea_GetIncomingConnectionsList( buffer, this.Index, dir );
 	}
 	
 	public void GetLadders( int dir, ArrayStack buffer )

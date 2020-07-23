@@ -2976,15 +2976,28 @@ stock float FloatClamp(float a, float min, float max)
 
 stock bool NavMeshAreaIsEdge(int iAreaIndex, int iNavDirection)
 {
-	ArrayStack hConnections = NavMeshAreaGetAdjacentList(iAreaIndex, iNavDirection);
-	if (hConnections == null || hConnections.Empty)
-	{
-		if (hConnections != null) delete hConnections;
-		return true;
-	}
+	if (!g_bNavMeshBuilt) return false;
 	
-	delete hConnections;
-	return false;
+	int iConnectionsStartIndex = g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_ConnectionsStartIndex);
+	if (iConnectionsStartIndex == -1) return true;
+	
+	int iConnectionsEndIndex = g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_ConnectionsEndIndex);
+	
+	for (int i = iConnectionsStartIndex; i <= iConnectionsEndIndex; i++)
+	{
+		int iToAreaIndex = g_hNavMeshAreaConnections.Get(i, NavMeshConnection_AreaIndex);
+		if (iToAreaIndex == -1)
+			continue;
+
+		int direction = g_hNavMeshAreaConnections.Get(i, NavMeshConnection_Direction);
+		if (g_hNavMeshAreaConnections.Get(i, NavMeshConnection_Direction) != iNavDirection)
+			continue;
+		
+		if (NavMeshAreaIsConnected(iToAreaIndex, iAreaIndex, OppositeDirection(direction)))
+			return false;
+	}
+
+	return true;
 }
 
 stock float NavMeshLadderGetWidth(int iLadderIndex)
