@@ -77,6 +77,8 @@ typedef NavPathCostFunctor = function int(CNavArea area, CNavArea from, CNavLadd
 
 // NavMesh
 
+forward Action NavMesh_PostLoad(bool success);
+
 native bool NavMesh_Exists();
 
 native int NavMesh_GetMagicNumber();
@@ -117,8 +119,6 @@ native void NavMesh_CollectSurroundingAreas(ArrayStack hStack, CNavArea startAre
 
 native bool NavMesh_BuildPath(CNavArea startArea, CNavArea goalArea, const float goalPos[3], NavPathCostFunctor costFunctor, any costData=0, CNavArea &closestArea=INVALID_NAV_AREA, float maxPathLength=0.0, float flMaxStepSize=0.0);
 
-
-
 // CNavArea
 
 native int NavMeshArea_GetID(int areaIndex);
@@ -130,6 +130,8 @@ native void NavMeshArea_GetPlace(int areaIndex, char[] buffer, int maxlen);
 native bool NavMeshArea_GetCenter(int areaIndex, float buffer[3]);
 
 native void NavMeshArea_GetAdjacentList(ArrayStack buffer, int areaIndex, int dir);
+
+native void NavMeshArea_GetIncomingConnectionsList(ArrayStack buffer, int areaIndex, int dir);
 
 native void NavMeshArea_GetLadderList(ArrayStack buffer, int areaIndex, int dir);
 

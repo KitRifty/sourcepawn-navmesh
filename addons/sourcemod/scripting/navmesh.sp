@@ -44,6 +44,9 @@ enum
 	NavMeshArea_ConnectionsStartIndex,
 	NavMeshArea_ConnectionsEndIndex,
 	
+	NavMeshArea_IncomingConnectionsStartIndex,
+	NavMeshArea_IncomingConnectionsEndIndex,
+
 	NavMeshArea_HidingSpotsStartIndex,
 	NavMeshArea_HidingSpotsEndIndex,
 	
@@ -88,6 +91,7 @@ enum
 {
 	NavMeshConnection_AreaIndex = 0,
 	NavMeshConnection_Direction,
+	NavMeshConnection_FromAreaIndex,
 	NavMeshConnection_MaxStats
 };
 
@@ -171,6 +175,7 @@ enum
 ArrayList g_hNavMeshPlaces;
 ArrayList g_hNavMeshAreas;
 ArrayList g_hNavMeshAreaConnections;
+ArrayList g_hNavMeshAreaIncomingConnections;
 ArrayList g_hNavMeshAreaHidingSpots;
 ArrayList g_hNavMeshAreaEncounterPaths;
 ArrayList g_hNavMeshAreaEncounterSpots;
@@ -211,6 +216,7 @@ static int g_iNavMeshAreaOpenListIndex = -1;
 static int g_iNavMeshAreaOpenListTailIndex = -1;
 static int g_iNavMeshAreaMasterMarker = 0;
 
+GlobalForward g_hNavMeshPostLoadForward;
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
@@ -252,6 +258,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("NavMeshArea_GetPlace", Native_NavMeshAreaGetPlace);
 	CreateNative("NavMeshArea_GetCenter", Native_NavMeshAreaGetCenter);
 	CreateNative("NavMeshArea_GetAdjacentList", Native_NavMeshAreaGetAdjacentList);
+	CreateNative("NavMeshArea_GetIncomingConnectionsList", Native_NavMeshAreaGetIncomingConnectionsList);
 	CreateNative("NavMeshArea_GetLadderList", Native_NavMeshAreaGetLadderList);
 	CreateNative("NavMeshArea_GetHidingSpots", Native_NavMeshAreaGetHidingSpots);
 	CreateNative("NavMeshArea_GetClosestPointOnArea", Native_NavMeshAreaGetClosestPointOnArea);
@@ -303,7 +310,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("NavSpotOrder_GetHidingSpot", Native_NavSpotOrderGetHidingSpot);
 	CreateNative("NavSpotOrder_GetParametricDistance", Native_NavSpotOrderGetParametricDistance);
 
-	CreateNative("TFNavMeshArea_GetAttributeFlags", Native_TFNavMeshAreaGetAttributeFlags)
+	CreateNative("TFNavMeshArea_GetAttributeFlags", Native_TFNavMeshAreaGetAttributeFlags);
 }
 
 public void OnPluginStart()
@@ -311,6 +318,7 @@ public void OnPluginStart()
 	g_hNavMeshPlaces = new ArrayList(256);
 	g_hNavMeshAreas = new ArrayList(NavMeshArea_MaxStats);
 	g_hNavMeshAreaConnections = new ArrayList(NavMeshConnection_MaxStats);
+	g_hNavMeshAreaIncomingConnections = new ArrayList(NavMeshConnection_MaxStats);
 	g_hNavMeshAreaHidingSpots = new ArrayList(NavMeshHidingSpot_MaxStats);
 	g_hNavMeshAreaEncounterPaths = new ArrayList(NavMeshEncounterPath_MaxStats);
 	g_hNavMeshAreaEncounterSpots = new ArrayList(NavMeshEncounterSpot_MaxStats);
@@ -327,6 +335,8 @@ public void OnPluginStart()
 	g_hNavMeshLadderIdToIndexMap = new StringMap();
 	
 	HookEvent("nav_blocked", Event_NavAreaBlocked);
+
+	g_hNavMeshPostLoadForward = new GlobalForward("NavMesh_PostLoad", ET_Ignore, Param_Cell);
 }
 
 public void OnMapStart()
@@ -990,6 +1000,7 @@ bool NavMeshLoad(const char[] sMapName)
 {
 	g_hNavMeshAreas.Clear();
 	g_hNavMeshAreaConnections.Clear();
+	g_hNavMeshAreaIncomingConnections.Clear();
 	g_hNavMeshAreaEncounterPaths.Clear();
 	g_hNavMeshAreaHidingSpots.Clear();
 	g_hNavMeshAreaLadderConnections.Clear();
@@ -1085,6 +1096,7 @@ bool NavMeshLoad(const char[] sMapName)
 		if (!bFound)
 		{
 			LogMessage(".NAV file for %s could not be found", sMapName);
+			NavMeshPostLoad(false);
 			return false;
 		}
 	}
@@ -1099,6 +1111,7 @@ bool NavMeshLoad(const char[] sMapName)
 	{
 		delete hFile;
 		LogError("Error reading magic number value from navigation mesh: %s", sNavFilePath);
+		NavMeshPostLoad(false);
 		return false;
 	}
 	
@@ -1106,6 +1119,7 @@ bool NavMeshLoad(const char[] sMapName)
 	{
 		delete hFile;
 		LogError("Invalid magic number value from navigation mesh: %s [%p]", sNavFilePath, iNavMagicNumber);
+		NavMeshPostLoad(false);
 		return false;
 	}
 	
@@ -1117,6 +1131,7 @@ bool NavMeshLoad(const char[] sMapName)
 	{
 		delete hFile;
 		LogError("Error reading version number from navigation mesh: %s", sNavFilePath);
+		NavMeshPostLoad(false);
 		return false;
 	}
 	
@@ -1124,6 +1139,7 @@ bool NavMeshLoad(const char[] sMapName)
 	{
 		delete hFile;
 		LogError("Invalid version number value from navigation mesh: %s [%d]", sNavFilePath, iNavVersion);
+		NavMeshPostLoad(false);
 		return false;
 	}
 	
@@ -1205,6 +1221,8 @@ bool NavMeshLoad(const char[] sMapName)
 			g_hNavMeshAreas.Set(iAreaIndex, 0.0, NavMeshArea_PathLengthSoFar);
 			g_hNavMeshAreas.Set(iAreaIndex, false, NavMeshArea_Blocked);
 			g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_NearSearchMarker);
+			g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_IncomingConnectionsStartIndex);
+			g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_IncomingConnectionsEndIndex);
 
 			int iAreaID = -1;
 			ReadFileCell(hFile, iAreaID, UNSIGNED_INT_BYTE_SIZE);
@@ -1314,6 +1332,7 @@ bool NavMeshLoad(const char[] sMapName)
 						
 						int iConnectionIndex = g_hNavMeshAreaConnections.Push(iConnectingAreaID);
 						g_hNavMeshAreaConnections.Set(iConnectionIndex, iDirection, NavMeshConnection_Direction);
+						g_hNavMeshAreaConnections.Set(iConnectionIndex, iAreaIndex, NavMeshConnection_FromAreaIndex);
 
 						iConnectionsEndIndex = g_AreaConnectionsListStartIndex++;
 					}
@@ -1674,6 +1693,67 @@ bool NavMeshLoad(const char[] sMapName)
 		}
 	}
 	
+	ArrayList[] hIncomingConnectionsArray = new ArrayList[iAreaCount];
+	for (int i = 0; i < iAreaCount; i++)
+	{
+		hIncomingConnectionsArray[i] = null;
+	}
+
+	for (int iAreaIndex = 0; iAreaIndex < iAreaCount; iAreaIndex++)
+	{
+		int startIndex = g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_ConnectionsStartIndex);
+		if (startIndex == -1)
+			continue;
+		int endIndex = g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_ConnectionsEndIndex);
+
+		for (int i = startIndex; i <= endIndex; i++) {
+			int iToAreaIndex = g_hNavMeshAreaConnections.Get(i, NavMeshConnection_AreaIndex);
+			if (iToAreaIndex == -1)
+				continue;
+			
+			int direction = g_hNavMeshAreaConnections.Get(i, NavMeshConnection_Direction);
+
+			if (!NavMeshAreaIsConnected(iToAreaIndex, iAreaIndex, OppositeDirection(direction))) {
+				ArrayList incomingConnections = hIncomingConnectionsArray[iToAreaIndex] == null ? new ArrayList(NavMeshConnection_MaxStats) : hIncomingConnectionsArray[iToAreaIndex];
+				hIncomingConnectionsArray[iToAreaIndex] = incomingConnections;
+
+				int index = incomingConnections.Push(iAreaIndex);
+				incomingConnections.Set(index, OppositeDirection(direction), NavMeshConnection_Direction);
+				incomingConnections.Set(index, iToAreaIndex, NavMeshConnection_FromAreaIndex);
+			}
+		}
+	}
+
+	int iIncomingConnections = 0;
+
+	for (int iAreaIndex = 0; iAreaIndex < iAreaCount; iAreaIndex++)
+	{
+		ArrayList incomingConnections = hIncomingConnectionsArray[iAreaIndex];
+		if (incomingConnections == null)
+			continue;
+		
+		int startIndex = -1;
+		int endIndex = -1;
+
+		for (int j = 0; j < incomingConnections.Length; j++) 
+		{
+			if (startIndex == -1) startIndex = iIncomingConnections;
+
+			int incConnection = g_hNavMeshAreaIncomingConnections.Push(incomingConnections.Get(j, NavMeshConnection_AreaIndex));
+			g_hNavMeshAreaIncomingConnections.Set(incConnection, incomingConnections.Get(j, NavMeshConnection_Direction), NavMeshConnection_Direction);
+			g_hNavMeshAreaIncomingConnections.Set(incConnection, incomingConnections.Get(j, NavMeshConnection_FromAreaIndex), NavMeshConnection_FromAreaIndex);
+			endIndex = iIncomingConnections++;
+		}
+
+		delete incomingConnections;
+		hIncomingConnectionsArray[iAreaIndex] = null;
+
+		g_hNavMeshAreas.Set(iAreaIndex, startIndex, NavMeshArea_IncomingConnectionsStartIndex);
+		g_hNavMeshAreas.Set(iAreaIndex, endIndex, NavMeshArea_IncomingConnectionsEndIndex);
+	}
+
+	NavMeshPostLoad(true);
+
 	return true;
 }
 
@@ -1791,6 +1871,7 @@ void NavMeshDestroy()
 	g_hNavMeshPlaces.Clear();
 	g_hNavMeshAreas.Clear();
 	g_hNavMeshAreaConnections.Clear();
+	g_hNavMeshAreaIncomingConnections.Clear();
 	g_hNavMeshAreaHidingSpots.Clear();
 	g_hNavMeshAreaEncounterPaths.Clear();
 	g_hNavMeshAreaEncounterSpots.Clear();
@@ -1816,6 +1897,13 @@ void NavMeshDestroy()
 	g_hNavMeshAreaIdToIndexMap.Clear();
 	g_hNavMeshHidingSpotIdToIndexMap.Clear();
 	g_hNavMeshLadderIdToIndexMap.Clear();
+}
+
+void NavMeshPostLoad(bool success)
+{
+	Call_StartForward(g_hNavMeshPostLoadForward);
+	Call_PushCell(success);
+	Call_Finish();
 }
 
 void NavMeshGridAllocate(float flMinX, float flMaxX, float flMinY, float flMaxY)
@@ -2324,6 +2412,28 @@ stock ArrayStack NavMeshAreaGetAdjacentList(int iAreaIndex, int iNavDirection)
 	return hStack;
 }
 
+stock ArrayStack NavMeshAreaGetIncomingConnectionsList(int iAreaIndex, int iNavDirection)
+{
+	if (!g_bNavMeshBuilt) return null;
+	
+	int iConnectionsStartIndex = g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_IncomingConnectionsStartIndex);
+	if (iConnectionsStartIndex == -1) return null;
+	
+	int iConnectionsEndIndex = g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_IncomingConnectionsEndIndex);
+	
+	ArrayStack hStack = new ArrayStack();
+	
+	for (int i = iConnectionsStartIndex; i <= iConnectionsEndIndex; i++)
+	{
+		if (g_hNavMeshAreaIncomingConnections.Get(i, NavMeshConnection_Direction) == iNavDirection)
+		{
+			hStack.Push(g_hNavMeshAreaIncomingConnections.Get(i, NavMeshConnection_AreaIndex));
+		}
+	}
+	
+	return hStack;
+}
+
 stock ArrayStack NavMeshAreaGetLadderList(int iAreaIndex, int iLadderDir)
 {
 	if (!g_bNavMeshBuilt) return null;
@@ -2654,25 +2764,18 @@ stock bool NavMeshAreaIsConnected(int iAreaIndex, int iTargetAreaIndex, int iNav
 	}
 	else
 	{
-		ArrayStack areas = NavMeshAreaGetAdjacentList(iAreaIndex, iNavDirection);
-		if (areas != null)
+		int connectionsStartIndex = g_hNavMeshAreas.Get( iAreaIndex, NavMeshArea_ConnectionsStartIndex );
+		if (connectionsStartIndex == -1)
+			return false;
+		
+		int connectionsEndIndex = g_hNavMeshAreas.Get( iAreaIndex, NavMeshArea_ConnectionsEndIndex );
+		for ( int i = connectionsStartIndex; i <= connectionsEndIndex; i++ ) 
 		{
-			if (!areas.Empty)
-			{
-				while (!areas.Empty)
-				{
-					int tempAreaIndex = -1;
-					PopStackCell(areas, tempAreaIndex);
-					
-					if (tempAreaIndex == iTargetAreaIndex)
-					{
-						delete areas;
-						return true;
-					}
-				}
-			}
+			if ( g_hNavMeshAreaConnections.Get(i, NavMeshConnection_Direction) != iNavDirection )
+				continue;
 			
-			delete areas;
+			if ( g_hNavMeshAreaConnections.Get(i, NavMeshConnection_AreaIndex) == iTargetAreaIndex )
+				return true;
 		}
 	}
 	
@@ -3335,6 +3438,24 @@ public int Native_NavMeshAreaGetAdjacentList(Handle plugin, int numParams)
 {
 	ArrayStack hTarget = view_as<ArrayStack>(GetNativeCell(1));
 	ArrayStack hDummy = NavMeshAreaGetAdjacentList(GetNativeCell(2), GetNativeCell(3));
+	
+	if (hDummy != null)
+	{
+		while (!hDummy.Empty)
+		{
+			new iAreaIndex = -1;
+			PopStackCell(hDummy, iAreaIndex);
+			hTarget.Push(iAreaIndex);
+		}
+		
+		delete hDummy;
+	}
+}
+
+public int Native_NavMeshAreaGetIncomingConnectionsList(Handle plugin, int numParams)
+{
+	ArrayStack hTarget = view_as<ArrayStack>(GetNativeCell(1));
+	ArrayStack hDummy = NavMeshAreaGetIncomingConnectionsList(GetNativeCell(2), GetNativeCell(3));
 	
 	if (hDummy != null)
 	{
