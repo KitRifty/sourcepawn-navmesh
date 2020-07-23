@@ -258,7 +258,6 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("NavMeshArea_GetPlace", Native_NavMeshAreaGetPlace);
 	CreateNative("NavMeshArea_GetCenter", Native_NavMeshAreaGetCenter);
 	CreateNative("NavMeshArea_GetAdjacentList", Native_NavMeshAreaGetAdjacentList);
-	CreateNative("NavMeshArea_GetIncomingConnectionsList", Native_NavMeshAreaGetIncomingConnectionsList);
 	CreateNative("NavMeshArea_GetLadderList", Native_NavMeshAreaGetLadderList);
 	CreateNative("NavMeshArea_GetHidingSpots", Native_NavMeshAreaGetHidingSpots);
 	CreateNative("NavMeshArea_GetClosestPointOnArea", Native_NavMeshAreaGetClosestPointOnArea);
@@ -286,6 +285,9 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("NavMeshArea_ComputeDirection", Native_NavMeshAreaComputeDirection);
 	CreateNative("NavMeshArea_GetLightIntensity", Native_NavMeshAreaGetLightIntensity);
 	
+	CreateNative("CNavArea.GetAdjacentList", Native_NavMeshAreaGetAdjacentAreas);
+	CreateNative("CNavArea.GetIncomingConnections", Native_NavMeshAreaGetIncomingConnections);
+
 	CreateNative("NavHidingSpot_GetID", Native_NavHidingSpotGetID);
 	CreateNative("NavHidingSpot_GetFlags", Native_NavHidingSpotGetFlags);
 	CreateNative("NavHidingSpot_GetPosition", Native_NavHidingSpotGetPosition);
@@ -310,7 +312,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("NavSpotOrder_GetHidingSpot", Native_NavSpotOrderGetHidingSpot);
 	CreateNative("NavSpotOrder_GetParametricDistance", Native_NavSpotOrderGetParametricDistance);
 
-	CreateNative("TFNavMeshArea_GetAttributeFlags", Native_TFNavMeshAreaGetAttributeFlags);
+	CreateNative("CTFNavArea.AttributeFlags.get", Native_TFNavMeshAreaGetAttributeFlags);
 }
 
 public void OnPluginStart()
@@ -511,7 +513,6 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 {
 	if (!g_bNavMeshBuilt) 
 	{
-		LogError("Could not build path because the nav mesh does not exist!");
 		return false;
 	}
 	
@@ -522,7 +523,6 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 	
 	if (iStartAreaIndex == -1)
 	{
-		LogError("Could not build path because the starting area does not exist!");
 		return false;
 	}
 	
@@ -531,7 +531,6 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 	
 	if (iGoalAreaIndex == -1)
 	{
-		LogError("Could not build path from area %d to area %d because the goal area does not exist!");
 		return false;
 	}
 	
@@ -1693,10 +1692,12 @@ bool NavMeshLoad(const char[] sMapName)
 		}
 	}
 	
-	ArrayList[] hIncomingConnectionsArray = new ArrayList[iAreaCount];
+	// Using an ArrayList because a dynamic-allocated array for large meshes results in nasty heap overflow.
+	ArrayList hIncomingConnectionsArray = new ArrayList();
+	hIncomingConnectionsArray.Resize(iAreaCount);
 	for (int i = 0; i < iAreaCount; i++)
 	{
-		hIncomingConnectionsArray[i] = null;
+		hIncomingConnectionsArray.Set(i, INVALID_HANDLE);
 	}
 
 	for (int iAreaIndex = 0; iAreaIndex < iAreaCount; iAreaIndex++)
@@ -1714,8 +1715,12 @@ bool NavMeshLoad(const char[] sMapName)
 			int direction = g_hNavMeshAreaConnections.Get(i, NavMeshConnection_Direction);
 
 			if (!NavMeshAreaIsConnected(iToAreaIndex, iAreaIndex, OppositeDirection(direction))) {
-				ArrayList incomingConnections = hIncomingConnectionsArray[iToAreaIndex] == null ? new ArrayList(NavMeshConnection_MaxStats) : hIncomingConnectionsArray[iToAreaIndex];
-				hIncomingConnectionsArray[iToAreaIndex] = incomingConnections;
+				ArrayList incomingConnections = hIncomingConnectionsArray.Get(iToAreaIndex);
+				if (incomingConnections == INVALID_HANDLE)
+				{
+					incomingConnections = new ArrayList(NavMeshConnection_MaxStats);
+					hIncomingConnectionsArray.Set(iToAreaIndex, incomingConnections);
+				}
 
 				int index = incomingConnections.Push(iAreaIndex);
 				incomingConnections.Set(index, OppositeDirection(direction), NavMeshConnection_Direction);
@@ -1728,8 +1733,8 @@ bool NavMeshLoad(const char[] sMapName)
 
 	for (int iAreaIndex = 0; iAreaIndex < iAreaCount; iAreaIndex++)
 	{
-		ArrayList incomingConnections = hIncomingConnectionsArray[iAreaIndex];
-		if (incomingConnections == null)
+		ArrayList incomingConnections = hIncomingConnectionsArray.Get(iAreaIndex);
+		if (incomingConnections == INVALID_HANDLE)
 			continue;
 		
 		int startIndex = -1;
@@ -1746,11 +1751,13 @@ bool NavMeshLoad(const char[] sMapName)
 		}
 
 		delete incomingConnections;
-		hIncomingConnectionsArray[iAreaIndex] = null;
+		hIncomingConnectionsArray.Set(iAreaIndex, INVALID_HANDLE);
 
 		g_hNavMeshAreas.Set(iAreaIndex, startIndex, NavMeshArea_IncomingConnectionsStartIndex);
 		g_hNavMeshAreas.Set(iAreaIndex, endIndex, NavMeshArea_IncomingConnectionsEndIndex);
 	}
+
+	delete hIncomingConnectionsArray;
 
 	NavMeshPostLoad(true);
 
@@ -3465,21 +3472,51 @@ public int Native_NavMeshAreaGetAdjacentList(Handle plugin, int numParams)
 	}
 }
 
-public int Native_NavMeshAreaGetIncomingConnectionsList(Handle plugin, int numParams)
+public int Native_NavMeshAreaGetAdjacentAreas(Handle plugin, int numParams)
 {
-	ArrayStack hTarget = view_as<ArrayStack>(GetNativeCell(1));
-	ArrayStack hDummy = NavMeshAreaGetIncomingConnectionsList(GetNativeCell(2), GetNativeCell(3));
+	int iAreaIndex = GetNativeCell(1);
+	int iNavDirection = GetNativeCell(2);
+	ArrayList hTarget = view_as<ArrayList>(GetNativeCell(3));
+
+	int iConnectionsStartIndex = g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_ConnectionsStartIndex);
+	if (iConnectionsStartIndex == -1) return;
 	
-	if (hDummy != null)
+	int iConnectionsEndIndex = g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_ConnectionsEndIndex);
+	
+	for (int i = iConnectionsStartIndex; i <= iConnectionsEndIndex; i++)
 	{
-		while (!hDummy.Empty)
-		{
-			new iAreaIndex = -1;
-			PopStackCell(hDummy, iAreaIndex);
-			hTarget.Push(iAreaIndex);
-		}
+		int iToAreaIndex = g_hNavMeshAreaConnections.Get(i, NavMeshConnection_AreaIndex);
+		if (iToAreaIndex == -1)
+			continue;
+
+		if (iNavDirection != NAV_DIR_COUNT && g_hNavMeshAreaConnections.Get(i, NavMeshConnection_Direction) != iNavDirection)
+			continue;
 		
-		delete hDummy;
+		hTarget.Push(iToAreaIndex);
+	}
+}
+
+public int Native_NavMeshAreaGetIncomingConnections(Handle plugin, int numParams)
+{
+	int iAreaIndex = GetNativeCell(1);
+	int iNavDirection = GetNativeCell(2);
+	ArrayList hTarget = view_as<ArrayList>(GetNativeCell(3));
+
+	int iConnectionsStartIndex = g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_IncomingConnectionsStartIndex);
+	if (iConnectionsStartIndex == -1) return;
+	
+	int iConnectionsEndIndex = g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_IncomingConnectionsEndIndex);
+	
+	for (int i = iConnectionsStartIndex; i <= iConnectionsEndIndex; i++)
+	{
+		int iFromAreaIndex = g_hNavMeshAreaIncomingConnections.Get(i, NavMeshConnection_FromAreaIndex);
+		if (iFromAreaIndex == -1)
+			continue;
+
+		if (iNavDirection != NAV_DIR_COUNT && g_hNavMeshAreaIncomingConnections.Get(i, NavMeshConnection_Direction) != iNavDirection)
+			continue;
+		
+		hTarget.Push(iFromAreaIndex);
 	}
 }
 

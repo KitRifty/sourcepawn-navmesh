@@ -137,8 +137,6 @@ native bool NavMeshArea_GetCenter(int areaIndex, float buffer[3]);
 
 native void NavMeshArea_GetAdjacentList(ArrayStack buffer, int areaIndex, int dir);
 
-native void NavMeshArea_GetIncomingConnectionsList(ArrayStack buffer, int areaIndex, int dir);
-
 native void NavMeshArea_GetLadderList(ArrayStack buffer, int areaIndex, int dir);
 
 native void NavMeshArea_GetHidingSpots(ArrayStack buffer, int areaIndex);
@@ -280,6 +278,13 @@ methodmap CNavArea
 		return NavMeshArea_GetZFromXAndY(this.Index, x, y);
 	}
 	
+	/**
+	 * Returns whether or not the area overlaps the given point. The Z-axis is not checked.
+	 *
+	 * @param	point		The point to check.
+	 * @param	tolerance	How many units the point can be away from the edge of the area.
+	 * @return				true if overlapping, false otherwise.
+	 */
 	public bool IsOverlappingPoint( const float point[3], float tolerance=0.0 )
 	{
 		return NavMeshArea_IsOverlappingPoint(this.Index, point, tolerance);
@@ -356,72 +361,61 @@ methodmap CNavArea
 	 *
 	 * @param	dir		Direction to check.
 	 * @param	buffer	An ArrayStack to insert the CNavArea's in.
+	 * @deprecated		Use CNavArea.GetAdjacentList() instead.
 	 */
+	#pragma deprecated Use CNavArea.GetAdjacentList() instead.
 	public void GetAdjacentAreas( int dir, ArrayStack buffer )
 	{
 		NavMeshArea_GetAdjacentList( buffer, this.Index, dir );
 	}
+
+	/**
+	 * Retrieves all bi-directional and one-way OUTGOING connections from this area and stores CNavArea's in the
+	 * provided buffer.
+	 *
+	 * Note: This does NOT include one-way INCOMING connections. Use GetIncomingConnections() for that.
+	 *
+	 * @param	dir		Direction to check. If NAV_DIR_COUNT is the direction, all directions will be checked.
+	 * @param	buffer	An ArrayList to insert the CNavArea's in.
+	 */
+	public native void GetAdjacentList( int dir, ArrayList buffer );
 	
+	public CNavArea GetRandomAdjacentArea( int dir )
+	{
+		ArrayList list = new ArrayList();
+		this.GetAdjacentList(dir, list);
+		CNavArea area = list.Length > 0 ? CNavArea( list.Get( GetRandomInt(0, list.Length - 1) ) ) : INVALID_NAV_AREA;
+		delete list;
+		return area;
+	}
+
 	/**
 	 * Returns the amount of bi-directional and one-way OUTGOING connections from this area in the provided
 	 * direction.
 	 *
 	 * Note: This does NOT count one-way INCOMING connections.
 	 *
-	 * @param	dir		Direction to check.
+	 * @param	dir		Direction to check. If NAV_DIR_COUNT is the direction, all directions will be checked.
 	 * @return			The amount of connections.
 	 */
 	public int GetAdjacentCount( int dir )
 	{
-		ArrayStack buffer = new ArrayStack();
-		this.GetAdjacentAreas( dir, buffer );
 		int count = 0;
-		while (!buffer.Empty)
-		{
-			int value;
-			PopStackCell(buffer, value);
-			count++;
-		}
-		delete buffer;
-		return count;
-	}
-	
-	public CNavArea GetRandomAdjacentArea( int dir )
-	{
-		ArrayStack buffer = new ArrayStack();
-		this.GetAdjacentAreas( dir, buffer );
-		
-		if (buffer.Empty)
-		{
-			delete buffer;
-			return INVALID_NAV_AREA;
-		}
-		
 		ArrayList list = new ArrayList();
-		while (!buffer.Empty)
-		{
-			int value;
-			PopStackCell(buffer, value);
-			list.Push(value);
-		}
-		
-		delete buffer;
-		CNavArea area = CNavArea( list.Get( GetRandomInt(0, list.Length - 1) ) );
+		this.GetAdjacentList(dir, list);
+		count = list.Length;
 		delete list;
-		return area;
+		return count;
 	}
 
 	/**
 	 * Retrieves all one-way INCOMING connections to this area and stores CNavArea's in the provided
 	 * buffer.
 	 *
-	 * @param	dir		Direction to check.
-	 * @param	buffer	An ArrayStack to insert the CNavArea's in.
+	 * @param	dir		Direction to check. If NAV_DIR_COUNT is the direction, all directions will be checked.
+	 * @param	buffer	An ArrayList to insert the CNavArea's in.
 	 */
-	public void GetIncomingConnections( int dir, ArrayStack buffer )
-	{
-		NavMeshArea_GetIncomingConnectionsList( buffer, this.Index, dir );
-	}
+	public native void GetIncomingConnections( int dir, ArrayList buffer );
 	
 	public void GetLadders( int dir, ArrayStack buffer )
 	{
@@ -505,13 +499,11 @@ enum
 	TF_NAV_PERSISTENT_ATTRIBUTES		= TF_NAV_SNIPER_SPOT | TF_NAV_SENTRY_SPOT | TF_NAV_NO_SPAWNING | TF_NAV_BLUE_SETUP_GATE | TF_NAV_RED_SETUP_GATE | TF_NAV_BLOCKED_AFTER_POINT_CAPTURE | TF_NAV_BLOCKED_UNTIL_POINT_CAPTURE | TF_NAV_BLUE_ONE_WAY_DOOR | TF_NAV_RED_ONE_WAY_DOOR | TF_NAV_DOOR_NEVER_BLOCKS | TF_NAV_DOOR_ALWAYS_BLOCKS | TF_NAV_UNBLOCKABLE | TF_NAV_WITH_SECOND_POINT | TF_NAV_WITH_THIRD_POINT | TF_NAV_WITH_FOURTH_POINT | TF_NAV_WITH_FIFTH_POINT | TF_NAV_RESCUE_CLOSET
 };
 
-native int TFNavMeshArea_GetAttributeFlags(int areaIndex);
-
 methodmap CTFNavArea < CNavArea
 {
 	property int AttributeFlags
 	{
-		public get() { return TFNavMeshArea_GetAttributeFlags(this.Index); }
+		public native get();
 	}
 }
 
