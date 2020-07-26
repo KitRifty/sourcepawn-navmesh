@@ -27,9 +27,7 @@ As a start, you may use [VTable Dumper](https://asherkin.github.io/vtable/) and 
 class CNavMesh
 {
   virtual NavErrorType Load( void );
-  virtual void SaveCustomData( CUtlBuffer &fileBuffer ) const { }
   virtual void LoadCustomData( CUtlBuffer &fileBuffer, unsigned int subVersion ) { }
-  virtual void SaveCustomDataPreArea( CUtlBuffer &fileBuffer ) const { }
   virtual void LoadCustomDataPreArea( CUtlBuffer &fileBuffer, unsigned int subVersion ) { }
 }
 
