@@ -17,6 +17,12 @@ If your game isn't listed here, there's a *slight* chance it may still work, jus
 
 I don't plan on working on support for other games, but feel free to open a pull request if you wish to do so. Make use of the `NavMeshLoadCustomDataPreArea`, `NavMeshLoadCustomData`, and `NavMeshLoadAreaCustomData` functions as much as possible.
 
+## Reversing a game-specific .NAV format
+
+As a start, you may use [VTable Dumper](https://asherkin.github.io/vtable/) and check for any subclasses of `CNavArea` or `CNavMesh`, and checking if the subclass overrides the `Load` function or its custom variants in the table. If that's the case, then it'll give you a good starting point on where to look when disassembling a Linux server binary. If there aren't any subclasses, then you might not have to do anything and there's a chance that the plugin will work as is.
+
+If you want to disassemble a Windows server binary, then God help you.
+
 ## Current Dev. Goals
 
 - **Move away from using `ArrayStack`.** Transition functions to push to a given `ArrayList` rather than allocate an `ArrayStack`. 
