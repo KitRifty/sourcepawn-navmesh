@@ -77,6 +77,14 @@ typedef NavPathCostFunctor = function int(CNavArea area, CNavArea from, CNavLadd
 
 // NavMesh
 
+/**
+ * Called when the plugin finishes loading the navigation mesh, even if it fails. Called within the
+ * OnMapStart() forward.
+ * 
+ * @param success		true if sucessful, false otherwise.
+ */
+forward Action NavMesh_PostLoad(bool success);
+
 native bool NavMesh_Exists();
 
 native int NavMesh_GetMagicNumber();
@@ -116,8 +124,6 @@ native int NavMesh_GetGridSizeY();
 native void NavMesh_CollectSurroundingAreas(ArrayStack hStack, CNavArea startArea, float travelDistLimit=1500.0, float maxStepUpLimit=StepHeight, float maxDropDownLimit=100.0);
 
 native bool NavMesh_BuildPath(CNavArea startArea, CNavArea goalArea, const float goalPos[3], NavPathCostFunctor costFunctor, any costData=0, CNavArea &closestArea=INVALID_NAV_AREA, float maxPathLength=0.0, float flMaxStepSize=0.0);
-
-
 
 // CNavArea
 
@@ -272,21 +278,53 @@ methodmap CNavArea
 		return NavMeshArea_GetZFromXAndY(this.Index, x, y);
 	}
 	
+	/**
+	 * Returns whether or not the area overlaps the given point. The Z-axis is not checked.
+	 *
+	 * @param	point		The point to check.
+	 * @param	tolerance	How many units the point can be away from the edge of the area.
+	 * @return				true if overlapping, false otherwise.
+	 */
 	public bool IsOverlappingPoint( const float point[3], float tolerance=0.0 )
 	{
 		return NavMeshArea_IsOverlappingPoint(this.Index, point, tolerance);
 	}
 	
+	/**
+	 * Returns whether or not the area overlaps the given area. The Z-axis is not checked.
+	 *
+	 * @param	area	The area to check.
+	 * @return			true if overlapping, false otherwise.
+	 */
 	public bool IsOverlappingArea( CNavArea area )
 	{
 		return NavMeshArea_IsOverlappingArea(this.Index, area.Index);
 	}
 	
+	/**
+	 * Returns whether or not the given point is contained by the area.
+	 *
+	 * Note: If the point overlaps the area, the given point can be at most StepHeight units above the 
+	 * area to still be considered "contained".
+	 *
+	 * @param	point	The point to check.
+	 * @return			true if the point is contained by the area, false otherwise.
+	 */
 	public bool Contains( const float point[3] )
 	{
 		return NavMeshArea_Contains(this.Index, point);
 	}
 	
+	/**
+	 * Returns whether or not if there are no bi-directional links in the given direction of the area.
+	 * 
+	 * Note: For the longest time this only checked for presence of an outgoing connection, regardless
+	 * if the connection was two-way or not. This has been recently changed to properly reflect
+	 * CNavArea::IsEdge( NavDirType dir )'s functionality.
+	 *
+	 * @param	dir		Direction to check.
+	 * @return			true if there are no bi-directional connections; false otherwise.
+	 */
 	public bool IsEdge( int dir )
 	{
 		return NavMeshArea_IsEdge(this.Index, dir);
@@ -297,6 +335,14 @@ methodmap CNavArea
 		NavMeshArea_GetRandomPoint(this.Index, buffer);
 	}
 	
+	/**
+	 * Returns whether or not there exists a bi-directional/outgoing one-way link to targetArea in
+	 * the provided direction.
+	 *
+	 * @param	targetArea	The area to check for.
+	 * @param	dir			The direction to check. If NAV_DIR_COUNT is the direction, all directions will be checked.
+	 * @return				true if there exists a link, false otherwise.
+	 */
 	public bool IsConnected( CNavArea targetArea, int dir )
 	{
 		return NavMeshArea_IsConnected(this.Index, targetArea.Index, dir);
@@ -307,50 +353,69 @@ methodmap CNavArea
 		NavMeshArea_GetClosestPointOnArea(this.Index, pos, buffer);
 	}
 	
+	/**
+	 * Retrieves all bi-directional and one-way OUTGOING connections from this area and stores CNavArea's in the
+	 * provided buffer.
+	 *
+	 * Note: This does NOT include one-way INCOMING connections. Use GetIncomingConnections() for that.
+	 *
+	 * @param	dir		Direction to check.
+	 * @param	buffer	An ArrayStack to insert the CNavArea's in.
+	 * @deprecated		Use CNavArea.GetAdjacentList() instead.
+	 */
+	#pragma deprecated Use CNavArea.GetAdjacentList() instead.
 	public void GetAdjacentAreas( int dir, ArrayStack buffer )
 	{
 		NavMeshArea_GetAdjacentList( buffer, this.Index, dir );
 	}
-	
-	public int GetAdjacentCount( int dir )
-	{
-		ArrayStack buffer = new ArrayStack();
-		this.GetAdjacentAreas( dir, buffer );
-		int count = 0;
-		while (!buffer.Empty)
-		{
-			int value;
-			PopStackCell(buffer, value);
-			count++;
-		}
-		delete buffer;
-		return count;
-	}
+
+	/**
+	 * Retrieves all bi-directional and one-way OUTGOING connections from this area and stores CNavArea's in the
+	 * provided buffer.
+	 *
+	 * Note: This does NOT include one-way INCOMING connections. Use GetIncomingConnections() for that.
+	 *
+	 * @param	dir		Direction to check. If NAV_DIR_COUNT is the direction, all directions will be checked.
+	 * @param	buffer	An ArrayList to insert the CNavArea's in.
+	 */
+	public native void GetAdjacentList( int dir, ArrayList buffer );
 	
 	public CNavArea GetRandomAdjacentArea( int dir )
 	{
-		ArrayStack buffer = new ArrayStack();
-		this.GetAdjacentAreas( dir, buffer );
-		
-		if (buffer.Empty)
-		{
-			delete buffer;
-			return INVALID_NAV_AREA;
-		}
-		
 		ArrayList list = new ArrayList();
-		while (!buffer.Empty)
-		{
-			int value;
-			PopStackCell(buffer, value);
-			list.Push(value);
-		}
-		
-		delete buffer;
-		CNavArea area = CNavArea( list.Get( GetRandomInt(0, list.Length - 1) ) );
+		this.GetAdjacentList(dir, list);
+		CNavArea area = list.Length > 0 ? CNavArea( list.Get( GetRandomInt(0, list.Length - 1) ) ) : INVALID_NAV_AREA;
 		delete list;
 		return area;
 	}
+
+	/**
+	 * Returns the amount of bi-directional and one-way OUTGOING connections from this area in the provided
+	 * direction.
+	 *
+	 * Note: This does NOT count one-way INCOMING connections.
+	 *
+	 * @param	dir		Direction to check. If NAV_DIR_COUNT is the direction, all directions will be checked.
+	 * @return			The amount of connections.
+	 */
+	public int GetAdjacentCount( int dir )
+	{
+		int count = 0;
+		ArrayList list = new ArrayList();
+		this.GetAdjacentList(dir, list);
+		count = list.Length;
+		delete list;
+		return count;
+	}
+
+	/**
+	 * Retrieves all one-way INCOMING connections to this area and stores CNavArea's in the provided
+	 * buffer.
+	 *
+	 * @param	dir		Direction to check. If NAV_DIR_COUNT is the direction, all directions will be checked.
+	 * @param	buffer	An ArrayList to insert the CNavArea's in.
+	 */
+	public native void GetIncomingConnections( int dir, ArrayList buffer );
 	
 	public void GetLadders( int dir, ArrayStack buffer )
 	{
@@ -383,6 +448,64 @@ methodmap CNavArea
 	}
 }
 
+// CTFNavArea
+// Admittedly VERY questionable to include this (because it's from the recent leak), but feel free to not use them if you so please.
+// Bitflags for CTFNavArea's AttributeFlags property.
+enum
+{
+	TF_NAV_INVALID						= 0x00000000,
+
+	TF_NAV_BLOCKED						= 0x00000001,
+	TF_NAV_SPAWN_ROOM_RED				= 0x00000002,
+	TF_NAV_SPAWN_ROOM_BLUE				= 0x00000004,
+	TF_NAV_SPAWN_ROOM_EXIT				= 0x00000008,
+	TF_NAV_HAS_AMMO						= 0x00000010,
+	TF_NAV_HAS_HEALTH					= 0x00000020,
+	TF_NAV_CONTROL_POINT				= 0x00000040,
+
+	TF_NAV_BLUE_SENTRY_DANGER			= 0x00000080,			// sentry can potentially fire upon enemies in this area
+	TF_NAV_RED_SENTRY_DANGER			= 0x00000100,
+
+	TF_NAV_BLUE_SETUP_GATE				= 0x00000800,			// this area is blocked until the setup period is over
+	TF_NAV_RED_SETUP_GATE				= 0x00001000,			// this area is blocked until the setup period is over
+	TF_NAV_BLOCKED_AFTER_POINT_CAPTURE	= 0x00002000,			// this area becomes blocked after the first point is capped
+	TF_NAV_BLOCKED_UNTIL_POINT_CAPTURE  = 0x00004000,			// this area is blocked until the first point is capped, then is unblocked
+	TF_NAV_BLUE_ONE_WAY_DOOR			= 0x00008000,
+	TF_NAV_RED_ONE_WAY_DOOR				= 0x00010000,
+
+ 	TF_NAV_WITH_SECOND_POINT			= 0x00020000,
+ 	TF_NAV_WITH_THIRD_POINT				= 0x00040000,
+  	TF_NAV_WITH_FOURTH_POINT			= 0x00080000,
+ 	TF_NAV_WITH_FIFTH_POINT				= 0x00100000,
+
+	TF_NAV_SNIPER_SPOT					= 0x00200000,			// this is a good place for a sniper to lurk
+	TF_NAV_SENTRY_SPOT					= 0x00400000,			// this is a good place to build a sentry
+
+	TF_NAV_ESCAPE_ROUTE					= 0x00800000,			// for Raid mode
+	TF_NAV_ESCAPE_ROUTE_VISIBLE			= 0x01000000,			// all areas that have visibility to the escape route
+
+	TF_NAV_NO_SPAWNING					= 0x02000000,			// don't spawn bots in this area
+
+ 	TF_NAV_RESCUE_CLOSET				= 0x04000000,			// for respawning friends in Raid mode
+
+ 	TF_NAV_BOMB_CAN_DROP_HERE			= 0x08000000,			// the bomb can be dropped here and reached by the invaders in MvM
+
+	TF_NAV_DOOR_NEVER_BLOCKS			= 0x10000000,
+	TF_NAV_DOOR_ALWAYS_BLOCKS			= 0x20000000,
+
+	TF_NAV_UNBLOCKABLE					= 0x40000000,			// this area cannot be blocked
+
+	// save/load these manually set flags, and don't clear them between rounds
+	TF_NAV_PERSISTENT_ATTRIBUTES		= TF_NAV_SNIPER_SPOT | TF_NAV_SENTRY_SPOT | TF_NAV_NO_SPAWNING | TF_NAV_BLUE_SETUP_GATE | TF_NAV_RED_SETUP_GATE | TF_NAV_BLOCKED_AFTER_POINT_CAPTURE | TF_NAV_BLOCKED_UNTIL_POINT_CAPTURE | TF_NAV_BLUE_ONE_WAY_DOOR | TF_NAV_RED_ONE_WAY_DOOR | TF_NAV_DOOR_NEVER_BLOCKS | TF_NAV_DOOR_ALWAYS_BLOCKS | TF_NAV_UNBLOCKABLE | TF_NAV_WITH_SECOND_POINT | TF_NAV_WITH_THIRD_POINT | TF_NAV_WITH_FOURTH_POINT | TF_NAV_WITH_FIFTH_POINT | TF_NAV_RESCUE_CLOSET
+};
+
+methodmap CTFNavArea < CNavArea
+{
+	property int AttributeFlags
+	{
+		public native get();
+	}
+}
 
 // HidingSpot
 
