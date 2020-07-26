@@ -8,6 +8,9 @@ this to have any purpose.
 Special thanks goes to Anthony Iacano (pimpinjuice) for the parser code, which can be found here: 
 https://github.com/AnthonyIacono/War3SourceV2/tree/master/Nav
 
+## Requirements
+- SourceMod 1.10+
+
 ## Game Compatibility
 
 | Name | Supported? |
