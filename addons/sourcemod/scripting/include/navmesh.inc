@@ -507,6 +507,21 @@ methodmap CTFNavArea < CNavArea
 	}
 }
 
+// CCSNavArea
+enum struct CCSNavArea_ApproachInfo
+{
+	int HereArea;
+	int PrevArea;
+	int PrevToHereHow;
+	int NextArea;
+	int HereToNextHow;
+}
+
+methodmap CCSNavArea < CNavArea
+{
+	public native void GetApproachInfoList( ArrayList buffer );
+}
+
 // HidingSpot
 
 enum

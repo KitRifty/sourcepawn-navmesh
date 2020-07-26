@@ -82,7 +82,10 @@ enum
 	
 	NavMeshArea_NearSearchMarker,
 	
-	TFNavMeshArea_AttributeFlags, // no longer unk01.
+	TFNavArea_AttributeFlags,
+
+	CSNavArea_ApproachInfoStartIndex,
+	CSNavArea_ApproachInfoEndIndex,
 
 	NavMeshArea_MaxStats
 };
@@ -218,6 +221,9 @@ static int g_iNavMeshAreaMasterMarker = 0;
 
 GlobalForward g_hNavMeshPostLoadForward;
 
+// CSGO
+ArrayList g_hCSNavAreaApproachInfo;
+
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
 	RegPluginLibrary("navmesh");
@@ -312,7 +318,17 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("NavSpotOrder_GetHidingSpot", Native_NavSpotOrderGetHidingSpot);
 	CreateNative("NavSpotOrder_GetParametricDistance", Native_NavSpotOrderGetParametricDistance);
 
-	CreateNative("CTFNavArea.AttributeFlags.get", Native_TFNavMeshAreaGetAttributeFlags);
+	switch (GetEngineVersion())
+	{
+		case Engine_TF2:
+		{
+			CreateNative("CTFNavArea.AttributeFlags.get", Native_TFNavAreaGetAttributeFlags);
+		}
+		case Engine_CSGO:
+		{
+			CreateNative("CCSNavArea.GetApproachInfoList", Native_CSNavAreaGetApproachInfoList);
+		}
+	}
 }
 
 public void OnPluginStart()
@@ -339,6 +355,14 @@ public void OnPluginStart()
 	HookEvent("nav_blocked", Event_NavAreaBlocked);
 
 	g_hNavMeshPostLoadForward = new GlobalForward("NavMesh_PostLoad", ET_Ignore, Param_Cell);
+
+	switch (GetEngineVersion())
+	{
+		case Engine_CSGO:
+		{
+			g_hCSNavAreaApproachInfo = new ArrayList(sizeof(CCSNavArea_ApproachInfo));
+		}
+	}
 }
 
 public void OnMapStart()
@@ -1019,6 +1043,14 @@ bool NavMeshLoad(const char[] sMapName)
 	g_AreaLadderConnectionsListStartIndex = 0;
 	g_AreaVisibleAreasListStartIndex = 0;
 
+	switch (GetEngineVersion())
+	{
+		case Engine_CSGO:
+		{
+			g_hCSNavAreaApproachInfo.Clear();
+		}
+	}
+
 	char sNavFilePath[PLATFORM_MAX_PATH];
 	Format(sNavFilePath, sizeof(sNavFilePath), "maps\\%s.nav", sMapName);
 	
@@ -1610,7 +1642,7 @@ bool NavMeshLoad(const char[] sMapName)
 		}
 
 		profiler.Stop();
-		LogMessage("Parsed %d ladders in %f seconds.", iAreaCount, profiler.Time);
+		LogMessage("Parsed %d ladders in %f seconds.", iLadderCount, profiler.Time);
 
 		delete profiler;
 	}
@@ -1821,7 +1853,43 @@ bool NavMeshLoadAreaCustomData(File hFile, int iAreaIndex, int iNavVersion, int 
 			int attributeFlags;
 			ReadFileCell(hFile, attributeFlags, UNSIGNED_INT_BYTE_SIZE);
 
-			g_hNavMeshAreas.Set(iAreaIndex, attributeFlags, TFNavMeshArea_AttributeFlags);
+			g_hNavMeshAreas.Set(iAreaIndex, attributeFlags, TFNavArea_AttributeFlags);
+		}
+		case Engine_CSGO:
+		{
+			g_hNavMeshAreas.Set(iAreaIndex, -1, CSNavArea_ApproachInfoStartIndex);
+			g_hNavMeshAreas.Set(iAreaIndex, -1, CSNavArea_ApproachInfoEndIndex);
+
+			switch (iNavSubVersion)
+			{
+				case 1:
+				{
+					int approachCount = 0;
+					ReadFileCell(hFile, approachCount, UNSIGNED_CHAR_BYTE_SIZE);
+
+					if (approachCount > 0)
+					{
+						int startIndex = g_hCSNavAreaApproachInfo.Length;
+
+						for (int i = 0; i < approachCount; i++) 
+						{
+							CCSNavArea_ApproachInfo approachInfo;
+							ReadFileCell(hFile, approachInfo.HereArea, UNSIGNED_INT_BYTE_SIZE);
+							ReadFileCell(hFile, approachInfo.PrevArea, UNSIGNED_INT_BYTE_SIZE);
+							ReadFileCell(hFile, approachInfo.PrevToHereHow, UNSIGNED_CHAR_BYTE_SIZE);
+							ReadFileCell(hFile, approachInfo.NextArea, UNSIGNED_INT_BYTE_SIZE);
+							ReadFileCell(hFile, approachInfo.HereToNextHow, UNSIGNED_CHAR_BYTE_SIZE);
+
+							g_hCSNavAreaApproachInfo.PushArray(approachInfo);
+						}
+
+						int endIndex = g_hCSNavAreaApproachInfo.Length - 1;
+
+						g_hNavMeshAreas.Set(iAreaIndex, startIndex, CSNavArea_ApproachInfoStartIndex);
+						g_hNavMeshAreas.Set(iAreaIndex, endIndex, CSNavArea_ApproachInfoEndIndex);
+					}
+				}
+			}
 		}
 	}
 
@@ -1886,6 +1954,14 @@ bool NavMeshLoadLadder(File hFile, int iLadderIndex)
 	ReadFileCell(hFile, iLadderBottomAreaID, UNSIGNED_INT_BYTE_SIZE);
 	g_hNavMeshLadders.Set(iLadderIndex, iLadderBottomAreaID, NavMeshLadder_BottomAreaIndex);
 
+	/*
+	LogMessage("Ladder ID - %d, Width: %0.1f, Top: %0.1f %0.1f %0.1f, Bottom: %0.1f %0.1f %0.1f, Length: %0.1f, Dir: %d, TopForwardArea: %d, TopLeftArea: %d, TopRightArea: %d, TopBehindArea: %d, BottomArea: %d",
+		iLadderID, flLadderWidth, flLadderTopX, flLadderTopY, flLadderTopZ, flLadderBottomX, flLadderBottomY,
+		flLadderBottomZ, flLadderLength, iLadderDirection, iLadderTopForwardAreaID,
+		iLadderTopLeftAreaID, iLadderTopRightAreaID, iLadderTopBehindAreaID, iLadderBottomAreaID
+	);
+	*/
+
 	return true;
 }
 
@@ -1935,6 +2011,27 @@ void NavMeshDestroy()
 
 void NavMeshPostLoad(bool success)
 {
+	if (success)
+	{
+		switch (GetEngineVersion())
+		{
+			case Engine_CSGO:
+			{
+				for ( int i = 0; i < g_hCSNavAreaApproachInfo.Length; i++ )
+				{
+					CCSNavArea_ApproachInfo approachInfo;
+					g_hCSNavAreaApproachInfo.GetArray(i, approachInfo, sizeof(approachInfo));
+
+					approachInfo.HereArea = NavMeshFindAreaByID(approachInfo.HereArea);
+					approachInfo.PrevArea = NavMeshFindAreaByID(approachInfo.PrevArea);
+					approachInfo.NextArea = NavMeshFindAreaByID(approachInfo.NextArea);
+
+					g_hCSNavAreaApproachInfo.SetArray(i, approachInfo, sizeof(approachInfo));
+				}
+			}
+		}
+	}
+
 	Call_StartForward(g_hNavMeshPostLoadForward);
 	Call_PushCell(success);
 	Call_Finish();
@@ -3867,8 +3964,28 @@ public int Native_NavSpotOrderGetParametricDistance(Handle plugin, int numParams
 	return NavSpotOrderGetParametricDistance(GetNativeCell(1));
 }
 
-public int Native_TFNavMeshAreaGetAttributeFlags(Handle plugin, int numParams)
+public int Native_TFNavAreaGetAttributeFlags(Handle plugin, int numParams)
 {
 	if (!g_bNavMeshBuilt) return 0;
-	return g_hNavMeshAreas.Get(GetNativeCell(1), TFNavMeshArea_AttributeFlags);
+	return g_hNavMeshAreas.Get(GetNativeCell(1), TFNavArea_AttributeFlags);
+}
+
+public int Native_CSNavAreaGetApproachInfoList(Handle plugin, int numParams)
+{
+	if (!g_bNavMeshBuilt) return;
+
+	int areaIndex = GetNativeCell(1);
+	ArrayList buffer = view_as<ArrayList>(GetNativeCell(2));
+	
+	int startIndex = g_hNavMeshAreas.Get(areaIndex, CSNavArea_ApproachInfoStartIndex);
+	if ( startIndex == -1 )
+		return;
+	
+	int endIndex = g_hNavMeshAreas.Get(areaIndex, CSNavArea_ApproachInfoEndIndex);
+	for (int i = startIndex; i <= endIndex; i++)
+	{
+		CCSNavArea_ApproachInfo approachInfo;
+		g_hCSNavAreaApproachInfo.GetArray( i, approachInfo, sizeof(approachInfo) );
+		buffer.PushArray(approachInfo, sizeof(approachInfo));
+	}
 }
