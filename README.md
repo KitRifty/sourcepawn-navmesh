@@ -13,3 +13,7 @@ https://github.com/AnthonyIacono/War3SourceV2/tree/master/Nav
 - **Team Fortress 2** - fully supported
 
 I don't plan on working on support for other games, but feel free to open a pull request if you wish to do so. Make use of the `NavMeshLoadCustomDataPreArea`, `NavMeshLoadCustomData`, and `NavMeshLoadAreaCustomData` functions as much as possible.
+
+## Current Dev. Goals
+
+- **Move away from using `ArrayStack`.** Transition functions to push to a given `ArrayList` rather than allocate an `ArrayStack`. 
