@@ -1180,8 +1180,8 @@ bool NavMeshLoad(const char[] sMapName)
 		char sPlaceName[256];
 		ReadFileString(hFile, sPlaceName, sizeof(sPlaceName), iPlaceStringSize);
 		
-		PushArrayString(g_hNavMeshPlaces, sPlaceName);
-		
+		g_hNavMeshPlaces.PushString(sPlaceName);
+
 		//LogMessage("Parsed place \"%s\" [index: %d]", sPlaceName, iPlaceIndex);
 	}
 	
@@ -1193,6 +1193,8 @@ bool NavMeshLoad(const char[] sMapName)
 		LogMessage("Has unnamed areas: %s", iNavUnnamedAreas ? "true" : "false");
 	}
 	
+	NavMeshLoadCustomDataPreArea(hFile, iNavVersion, iNavSubVersion);
+
 	// Get area count.
 	int iAreaCount = 0;
 	ReadFileCell(hFile, iAreaCount, UNSIGNED_INT_BYTE_SIZE);
@@ -1570,7 +1572,7 @@ bool NavMeshLoad(const char[] sMapName)
 
 			g_hNavMeshAreas.Set(iAreaIndex, iInheritVisibilityFrom, NavMeshArea_InheritVisibilityFrom);
 
-			NavMeshLoadAreaData(hFile, iAreaIndex, iNavVersion, iNavSubVersion);
+			NavMeshLoadAreaCustomData(hFile, iAreaIndex, iNavVersion, iNavSubVersion);
 		}
 
 		profiler.Stop();
@@ -1589,6 +1591,7 @@ bool NavMeshLoad(const char[] sMapName)
 	
 	NavMeshGridFinalize();
 	
+	// Read ladders.
 	int iLadderCount = 0;
 	ReadFileCell(hFile, iLadderCount, UNSIGNED_INT_BYTE_SIZE);
 	
@@ -1611,15 +1614,17 @@ bool NavMeshLoad(const char[] sMapName)
 
 		delete profiler;
 	}
-	
+
 	g_iNavMeshMagicNumber = iNavMagicNumber;
 	g_iNavMeshVersion = iNavVersion;
 	g_iNavMeshSubVersion = iNavSubVersion;
 	g_iNavMeshSaveBSPSize = iNavSaveBspSize;
 	g_bNavMeshAnalyzed = view_as<bool>(iNavMeshAnalyzed);
 	
+	NavMeshLoadCustomData(hFile, iNavVersion, iNavSubVersion);
+
 	delete hFile;
-	
+
 	// File parsing is all done. Convert referenced IDs to array indexes for faster performance and 
 	// lesser lookup time in the future.
 	
@@ -1793,11 +1798,24 @@ int NavMeshLoadHidingSpot(File hFile, int iOwnerAreaIndex)
 	return iIndex;
 }
 
-// Loads game-specific custom data.
-bool NavMeshLoadAreaData(File hFile, int iAreaIndex, int iNavVersion, int iNavSubVersion)
+// Loads game-specific custom data for the mesh before areas are parsed.
+bool NavMeshLoadCustomDataPreArea(File hFile, int iNavVersion, int iNavSubVersion)
 {
 	switch (GetEngineVersion())
 	{
+		// Insert other game-specific data stored in the mesh here.
+	}
+
+	return true;
+}
+
+// Loads game-specific custom data.
+bool NavMeshLoadAreaCustomData(File hFile, int iAreaIndex, int iNavVersion, int iNavSubVersion)
+{
+	switch (GetEngineVersion())
+	{
+		// Insert other game-specific data stored in the area here.
+
 		case Engine_TF2:
 		{
 			int attributeFlags;
@@ -1805,8 +1823,6 @@ bool NavMeshLoadAreaData(File hFile, int iAreaIndex, int iNavVersion, int iNavSu
 
 			g_hNavMeshAreas.Set(iAreaIndex, attributeFlags, TFNavMeshArea_AttributeFlags);
 		}
-		
-		// TODO: Insert other game-specific data stored in the area.
 	}
 
 	return true;
@@ -1869,6 +1885,17 @@ bool NavMeshLoadLadder(File hFile, int iLadderIndex)
 	int iLadderBottomAreaID;
 	ReadFileCell(hFile, iLadderBottomAreaID, UNSIGNED_INT_BYTE_SIZE);
 	g_hNavMeshLadders.Set(iLadderIndex, iLadderBottomAreaID, NavMeshLadder_BottomAreaIndex);
+
+	return true;
+}
+
+// Loads game-specific custom data.
+bool NavMeshLoadCustomData(File hFile, int iNavVersion, int iNavSubVersion)
+{
+	switch (GetEngineVersion())
+	{
+		// Insert other game-specific data stored in the mesh here.
+	}
 
 	return true;
 }
@@ -2034,35 +2061,14 @@ void NavMeshAddAreaToGrid(iAreaIndex)
 	int hiX = NavMeshWorldToGridX(flExtentHigh[0]);
 	int hiY = NavMeshWorldToGridY(flExtentHigh[1]);
 	
-	/*
-	decl String:path[PLATFORM_MAX_PATH];
-	BuildPath(Path_SM,path,PLATFORM_MAX_PATH, "navtest.txt");
-	new Handle:hFile = OpenFile(path, "a");
-	
-	WriteFileLine(hFile, "[%d]", g_hNavMeshAreas.Get(iAreaIndex));
-	WriteFileLine(hFile, "{");
-	WriteFileLine(hFile, "\t---Extent: (%f, %f) - (%f, %f)", flExtentLow[0], flExtentLow[1], flExtentHigh[0], flExtentHigh[1]);
-	*/
-	
 	for (int y = loY; y <= hiY; ++y)
 	{
-		//WriteFileLine(hFile, "\t--- y = %d", y);
-	
 		for (int x = loX; x <= hiX; ++x)
 		{
-			//WriteFileLine(hFile, "\t\t--- x = %d", x);
-		
 			int iGridIndex = x + y * g_iNavMeshGridSizeX;
 			NavMeshGridAddAreaToList(iGridIndex, iAreaIndex);
-			
-			//WriteFileLine(hFile, "\t\t\t--- %d", iGridIndex);
 		}
 	}
-	
-	/*
-	WriteFileLine(hFile, "}");
-	CloseHandle(hFile);
-	*/
 }
 
 // The following functions are stock functions associated with the navmesh grid. These
@@ -2082,7 +2088,6 @@ stock int NavMeshWorldToGridX(float flWX)
 	if (x < 0) x = 0;
 	else if (x >= g_iNavMeshGridSizeX) 
 	{
-	//	PrintToServer("NavMeshWorldToGridX: clamping x (%d) down to %d", x, g_iNavMeshGridSizeX - 1);
 		x = g_iNavMeshGridSizeX - 1;
 	}
 	
@@ -2096,7 +2101,6 @@ stock int NavMeshWorldToGridY(float flWY)
 	if (y < 0) y = 0;
 	else if (y >= g_iNavMeshGridSizeY) 
 	{
-	//	PrintToServer("NavMeshWorldToGridY: clamping y (%d) down to %d", y, g_iNavMeshGridSizeY - 1);
 		y = g_iNavMeshGridSizeY - 1;
 	}
 	
