@@ -21,7 +21,27 @@ I don't plan on working on support for other games, but feel free to open a pull
 
 ## Reversing a game-specific .NAV format
 
-As a start, you may use [VTable Dumper](https://asherkin.github.io/vtable/) and check for any subclasses of `CNavArea` or `CNavMesh`, and checking if the subclass overrides the `Load` function or its custom variants in the table. If that's the case, then it'll give you a good starting point on where to look when disassembling a Linux server binary. If you do stumble upon custom data being loaded in a function, take note of all calls to `CUtlBuffer::Get<Type>`. If there aren't any subclasses, then you might not have to do anything and there's a chance that the plugin will work as is.
+As a start, you may use [VTable Dumper](https://asherkin.github.io/vtable/) and check for any subclasses of `CNavArea` or `CNavMesh`, and checking if the subclass overrides the following functions:
+
+```c++
+class CNavMesh
+{
+  virtual NavErrorType Load( void );
+  virtual void SaveCustomData( CUtlBuffer &fileBuffer ) const { }
+  virtual void LoadCustomData( CUtlBuffer &fileBuffer, unsigned int subVersion ) { }
+  virtual void SaveCustomDataPreArea( CUtlBuffer &fileBuffer ) const { }
+  virtual void LoadCustomDataPreArea( CUtlBuffer &fileBuffer, unsigned int subVersion ) { }
+}
+
+class CNavArea
+{
+  virtual NavErrorType Load( CUtlBuffer &fileBuffer, unsigned int version, unsigned int subVersion );
+}
+```
+
+If it's the case that some of those functions are being overridden, then it'll give you a good starting point on where to look when disassembling a Linux server binary. If you do stumble upon custom data being loaded in a function, take note of all calls to `CUtlBuffer::Get<Type>`. 
+
+If there aren't any subclasses, then you might not have to do anything and there's a chance that the plugin will work as is.
 
 If you want to disassemble a Windows server binary, then God help you.
 
