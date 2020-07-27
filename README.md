@@ -18,6 +18,7 @@ https://github.com/AnthonyIacono/War3SourceV2/tree/master/Nav
 | Team Fortress 2 | :heavy_check_mark: |
 | Counter-Strike: Global Offensive | :heavy_check_mark: |
 | Counter-Strike: Source | :heavy_check_mark: |
+| Left 4 Dead 2 | :x: |
 
 If your game isn't listed here, there's a *slight* chance it may still work, just that it's never been tested. You really have to pray to God that the game doesn't append any custom data to the NavMesh and/or its areas (which, realistically, is hardly ever the case). It'll get pretty obvious that it doesn't work if you see the script loading in an infinite amount of areas, or you get a memory overflow, or the script execution just times out... whatever comes first, really.
 
