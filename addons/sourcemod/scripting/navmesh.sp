@@ -324,7 +324,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 		{
 			CreateNative("CTFNavArea.AttributeFlags.get", Native_TFNavAreaGetAttributeFlags);
 		}
-		case Engine_CSGO:
+		case Engine_CSGO, Engine_CSS:
 		{
 			CreateNative("CCSNavArea.GetApproachInfoList", Native_CSNavAreaGetApproachInfoList);
 		}
@@ -358,7 +358,7 @@ public void OnPluginStart()
 
 	switch (GetEngineVersion())
 	{
-		case Engine_CSGO:
+		case Engine_CSGO, Engine_CSS:
 		{
 			g_hCSNavAreaApproachInfo = new ArrayList(sizeof(CCSNavArea_ApproachInfo));
 		}
@@ -1045,7 +1045,7 @@ bool NavMeshLoad(const char[] sMapName)
 
 	switch (GetEngineVersion())
 	{
-		case Engine_CSGO:
+		case Engine_CSGO, Engine_CSS:
 		{
 			g_hCSNavAreaApproachInfo.Clear();
 		}
@@ -1095,7 +1095,7 @@ bool NavMeshLoad(const char[] sMapName)
 					delete hDir;
 				}
 			}
-			case Engine_TF2:
+			case Engine_TF2, Engine_CSS:
 			{
 				// Search custom directories.
 				DirectoryListing hDir = OpenDirectory("custom");
@@ -1855,7 +1855,7 @@ bool NavMeshLoadAreaCustomData(File hFile, int iAreaIndex, int iNavVersion, int 
 
 			g_hNavMeshAreas.Set(iAreaIndex, attributeFlags, TFNavArea_AttributeFlags);
 		}
-		case Engine_CSGO:
+		case Engine_CSGO, Engine_CSS:
 		{
 			g_hNavMeshAreas.Set(iAreaIndex, -1, CSNavArea_ApproachInfoStartIndex);
 			g_hNavMeshAreas.Set(iAreaIndex, -1, CSNavArea_ApproachInfoEndIndex);
@@ -2007,6 +2007,14 @@ void NavMeshDestroy()
 	g_hNavMeshAreaIdToIndexMap.Clear();
 	g_hNavMeshHidingSpotIdToIndexMap.Clear();
 	g_hNavMeshLadderIdToIndexMap.Clear();
+
+	switch (GetEngineVersion())
+	{
+		case Engine_CSGO, Engine_CSS:
+		{
+			g_hCSNavAreaApproachInfo.Clear();
+		}
+	}
 }
 
 void NavMeshPostLoad(bool success)
@@ -2015,7 +2023,7 @@ void NavMeshPostLoad(bool success)
 	{
 		switch (GetEngineVersion())
 		{
-			case Engine_CSGO:
+			case Engine_CSGO, Engine_CSS:
 			{
 				for ( int i = 0; i < g_hCSNavAreaApproachInfo.Length; i++ )
 				{
