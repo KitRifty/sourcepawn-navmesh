@@ -51,3 +51,4 @@ If you want to disassemble a Windows server binary, then God help you.
 ## Current Dev. Goals
 
 - **Move away from using `ArrayStack`.** Transition functions to push to a given `ArrayList` rather than allocate an `ArrayStack`. 
+- **Replace NavMeshArea_\* natives with CNavArea methodmap natives.** 
