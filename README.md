@@ -22,6 +22,8 @@ https://github.com/AnthonyIacono/War3SourceV2/tree/master/Nav
 
 If your game isn't listed here, there's a *slight* chance it may still work, just that it's never been tested. You really have to pray to God that the game doesn't append any custom data to the NavMesh and/or its areas (which, realistically, is hardly ever the case). It'll get pretty obvious that it doesn't work if you see the script loading in an infinite amount of areas, or you get a memory overflow, or the script execution just times out... whatever comes first, really.
 
+If your game doesn't natively support .NAV files, can you still use this plugin? [Yes.](./wiki/Using-the-plugin-in-non-native-games)
+
 I don't plan on working on support for other games, but feel free to open a pull request if you wish to do so. Make use of the `NavMeshLoadCustomDataPreArea`, `NavMeshLoadCustomData`, and `NavMeshLoadAreaCustomData` functions as much as possible.
 
 ## Reversing a game-specific .NAV format
