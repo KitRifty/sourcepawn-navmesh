@@ -44,7 +44,7 @@ class CNavArea
 }
 ```
 
-If it's the case that some of those functions are being overridden, then it'll give you a good starting point on where to look when disassembling a Linux server binary. If you do stumble upon custom data being loaded in a function, take note of all calls to `CUtlBuffer::Get<Type>`. 
+If it's the case that some of those functions are being overridden, then it'll give you a good starting point on where to look when disassembling a Linux server binary. If you do stumble upon custom data being loaded in a function, take note of all calls to `CUtlBuffer::GetType()` and `CUtlBuffer::Scanf()`. The `CUtlBuffer::Get<Type>()` functions are [inlined](https://github.com/ValveSoftware/source-sdk-2013/blob/master/sp/src/public/tier1/utlbuffer.h#L669), but it shouldn't be too hard to deduce which function is being called. 
 
 If there aren't any subclasses, then you might not have to do anything and there's a chance that the plugin will work as is.
 
