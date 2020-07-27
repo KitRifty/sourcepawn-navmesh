@@ -132,7 +132,7 @@ public void OnGameFrame()
 
 				switch (engineVersion)
 				{
-					case Engine_TF2, Engine_CSGO, Engine_CSS:
+					case Engine_TF2, Engine_CSGO, Engine_CSS, Engine_HL2DM:
 					{
 						SetHudTextParams(-1.0, 0.75, 0.2, 255, 255, 0, 150, 0, 0.0, 0.0, 0.0);
 						ShowSyncHudText(client, g_hPlayerTrackNavAreaInfoHudSync, "ID: %d\n# Connections: %d\n# Incoming: %d\n", area.ID, connections.Length, incomingConnections.Length);

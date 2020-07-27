@@ -352,7 +352,7 @@ public void OnPluginStart()
 	g_hNavMeshHidingSpotIdToIndexMap = new StringMap();
 	g_hNavMeshLadderIdToIndexMap = new StringMap();
 	
-	HookEvent("nav_blocked", Event_NavAreaBlocked);
+	HookEventEx("nav_blocked", Event_NavAreaBlocked);
 
 	g_hNavMeshPostLoadForward = new GlobalForward("NavMesh_PostLoad", ET_Ignore, Param_Cell);
 
