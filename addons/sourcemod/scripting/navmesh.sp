@@ -1889,6 +1889,7 @@ bool NavMeshLoadCustomDataPreArea(File hFile, int iNavVersion, int iNavSubVersio
 			{
 				if (iNavSubVersion >= 12)
 				{
+					ReadFileString(hFile, g_TerrorNavMeshZombiePopulation, sizeof(g_TerrorNavMeshZombiePopulation));
 					LogMessage("Population type: %s", g_TerrorNavMeshZombiePopulation);
 				}
 
