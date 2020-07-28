@@ -87,6 +87,8 @@ enum
 	CSNavArea_ApproachInfoStartIndex,
 	CSNavArea_ApproachInfoEndIndex,
 
+	TerrorNavArea_SpawnAttributes,
+
 	NavMeshArea_MaxStats
 };
 
@@ -133,6 +135,12 @@ enum
 	NavMeshLadderConnection_Direction,
 	NavMeshLadderConnection_MaxStats
 };
+
+enum struct AreaBindInfo
+{
+	int AreaIndex;
+	int Attributes;
+}
 
 enum
 {
@@ -223,6 +231,10 @@ GlobalForward g_hNavMeshPostLoadForward;
 
 // CSGO
 ArrayList g_hCSNavAreaApproachInfo;
+
+// L4D
+char g_TerrorNavMeshZombiePopulation[64];
+float g_TerrorNavMeshNavMaxViewDistance;
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
@@ -328,6 +340,12 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 		{
 			CreateNative("CCSNavArea.GetApproachInfoList", Native_CSNavAreaGetApproachInfoList);
 		}
+		case Engine_Left4Dead2:
+		{
+			CreateNative("TerrorNavMesh.GetZombiePopulation", Native_TerrorNavMeshGetZombiePopulation);
+			CreateNative("TerrorNavMesh.NavMaxViewDistance.get", Native_TerrorNavMeshGetNavMaxViewDistance);
+			CreateNative("TerrorNavArea.SpawnAttributes.get", Native_TerrorNavAreaGetSpawnAttributes);
+		}
 	}
 }
 
@@ -361,6 +379,9 @@ public void OnPluginStart()
 		case Engine_CSGO, Engine_CSS:
 		{
 			g_hCSNavAreaApproachInfo = new ArrayList(sizeof(CCSNavArea_ApproachInfo));
+		}
+		case Engine_Left4Dead2:
+		{
 		}
 	}
 }
@@ -1049,6 +1070,11 @@ bool NavMeshLoad(const char[] sMapName)
 		{
 			g_hCSNavAreaApproachInfo.Clear();
 		}
+		case Engine_Left4Dead2:
+		{
+			strcopy(g_TerrorNavMeshZombiePopulation, sizeof(g_TerrorNavMeshZombiePopulation), "");
+			g_TerrorNavMeshNavMaxViewDistance = 0.0;
+		}
 	}
 
 	char sNavFilePath[PLATFORM_MAX_PATH];
@@ -1198,32 +1224,7 @@ bool NavMeshLoad(const char[] sMapName)
 	
 	LogMessage("Nav version: %d; SubVersion: %d (v10+); BSPSize: %d; MagicNumber: %d", iNavVersion, iNavSubVersion, iNavSaveBspSize, iNavMagicNumber);
 	
-	int iPlaceCount = 0;
-	ReadFileCell(hFile, iPlaceCount, UNSIGNED_SHORT_BYTE_SIZE);
-	LogMessage("Place count: %d", iPlaceCount);
-	
-	// Parse through places.
-	// TF2 doesn't use places, but CS:S does.
-	for (int iPlaceIndex = 0; iPlaceIndex < iPlaceCount; iPlaceIndex++) 
-	{
-		int iPlaceStringSize = 0;
-		ReadFileCell(hFile, iPlaceStringSize, UNSIGNED_SHORT_BYTE_SIZE);
-		
-		char sPlaceName[256];
-		ReadFileString(hFile, sPlaceName, sizeof(sPlaceName), iPlaceStringSize);
-		
-		g_hNavMeshPlaces.PushString(sPlaceName);
-
-		//LogMessage("Parsed place \"%s\" [index: %d]", sPlaceName, iPlaceIndex);
-	}
-	
-	// Get any unnamed areas.
-	int iNavUnnamedAreas = 0;
-	if (iNavVersion > 11)
-	{
-		ReadFileCell(hFile, iNavUnnamedAreas, UNSIGNED_CHAR_BYTE_SIZE);
-		LogMessage("Has unnamed areas: %s", iNavUnnamedAreas ? "true" : "false");
-	}
+	NavMeshLoadPlaceDirectory(hFile, iNavVersion, iNavSubVersion);
 	
 	NavMeshLoadCustomDataPreArea(hFile, iNavVersion, iNavSubVersion);
 
@@ -1232,6 +1233,11 @@ bool NavMeshLoad(const char[] sMapName)
 	ReadFileCell(hFile, iAreaCount, UNSIGNED_INT_BYTE_SIZE);
 	
 	LogMessage("Area count: %d", iAreaCount);
+	if (iAreaCount == 0)
+	{
+		delete hFile;
+		return false;
+	}
 
 	if (iAreaCount > 0)
 	{
@@ -1265,7 +1271,7 @@ bool NavMeshLoad(const char[] sMapName)
 			IntToString(iAreaID, szAreaID, 16);
 			g_hNavMeshAreaIdToIndexMap.SetValue(szAreaID, iAreaIndex);
 
-			//LogMessage("Area ID: %d", iAreaID);
+			// LogMessage("Area ID: %d [file pos %x]", iAreaID, hFile.Position);
 			
 			int iAreaFlags = 0;
 
@@ -1284,7 +1290,7 @@ bool NavMeshLoad(const char[] sMapName)
 			
 			g_hNavMeshAreas.Set(iAreaIndex, iAreaFlags, NavMeshArea_Flags);
 
-			//LogMessage("Area Flags: %d", iAreaFlags);
+			// LogMessage("Area Flags: %d", iAreaFlags);
 			
 			float x1; float y1; float z1;
 			ReadFileCell(hFile, view_as<int>(x1), FLOAT_BYTE_SIZE);
@@ -1304,7 +1310,7 @@ bool NavMeshLoad(const char[] sMapName)
 			g_hNavMeshAreas.Set(iAreaIndex, y2, NavMeshArea_Y2);
 			g_hNavMeshAreas.Set(iAreaIndex, z2, NavMeshArea_Z2);
 
-			//LogMessage("Area extent: (%f, %f, %f), (%f, %f, %f)", x1, y1, z1, x2, y2, z2);
+			// LogMessage("Area extent: (%f, %f, %f), (%f, %f, %f)", x1, y1, z1, x2, y2, z2);
 			
 			g_flNavMeshExtentLow[0] = (iAreaIndex == 0 || x1 < g_flNavMeshExtentLow[0]) ? x1 : g_flNavMeshExtentLow[0];
 			g_flNavMeshExtentLow[1] = (iAreaIndex == 0 || y1 < g_flNavMeshExtentLow[1]) ? y1 : g_flNavMeshExtentLow[1];
@@ -1427,7 +1433,7 @@ bool NavMeshLoad(const char[] sMapName)
 			int iEncounterPathCount;
 			ReadFileCell(hFile, iEncounterPathCount, UNSIGNED_INT_BYTE_SIZE);
 			
-			//LogMessage("Encounter Path Count: %d", iEncounterPathCount);
+			// LogMessage("Encounter Path Count: %d", iEncounterPathCount);
 			
 			int iEncounterPathsStartIndex = -1;
 			int iEncounterPathsEndIndex = -1;
@@ -1499,7 +1505,7 @@ bool NavMeshLoad(const char[] sMapName)
 			ReadFileCell(hFile, iPlaceID, UNSIGNED_SHORT_BYTE_SIZE);
 			g_hNavMeshAreas.Set(iAreaIndex, iPlaceID, NavMeshArea_PlaceID);
 
-			//LogMessage("Place ID: %d", iPlaceID);
+			// LogMessage("Place ID: %d", iPlaceID);
 			
 			// Get ladder connections.
 			
@@ -1562,35 +1568,43 @@ bool NavMeshLoad(const char[] sMapName)
 				
 				if (iNavVersion >= 16)
 				{
-					int iVisibleAreaCount = 0;
-					ReadFileCell(hFile, iVisibleAreaCount, UNSIGNED_INT_BYTE_SIZE);
-					
-					//LogMessage("Visible area count: %d", iVisibleAreaCount);
-					
-					if (iVisibleAreaCount > 0)
+					switch (GetEngineVersion())
 					{
-						iVisibleAreasStartIndex = g_AreaVisibleAreasListStartIndex;
-					
-						for (int i = 0; i < iVisibleAreaCount; i++)
+						case Engine_Left4Dead2:
 						{
-							int iVisibleAreaID;
-							ReadFileCell(hFile, iVisibleAreaID, UNSIGNED_INT_BYTE_SIZE);
+							// L4D2 inserts its own custom data before visible area set.
+						}
+						default:
+						{
+							int iVisibleAreaCount = 0;
+							ReadFileCell(hFile, iVisibleAreaCount, UNSIGNED_INT_BYTE_SIZE);
 							
-							int iVisibleAreaAttributes;
-							ReadFileCell(hFile, iVisibleAreaAttributes, UNSIGNED_CHAR_BYTE_SIZE);
+							// LogMessage("Visible area count: %d", iVisibleAreaCount);
 							
-							int iVisibleAreaIndex = g_hNavMeshAreaVisibleAreas.Push(iVisibleAreaID);
-							g_hNavMeshAreaVisibleAreas.Set(iVisibleAreaIndex, iVisibleAreaAttributes, NavMeshVisibleArea_Attributes);
+							if (iVisibleAreaCount > 0)
+							{
+								iVisibleAreasStartIndex = g_hNavMeshAreaVisibleAreas.Length;
 							
-							iVisibleAreasEndIndex = g_AreaVisibleAreasListStartIndex++;
+								for (int i = 0; i < iVisibleAreaCount; i++)
+								{
+									AreaBindInfo bindInfo;
+									ReadFileCell(hFile, bindInfo.AreaIndex, UNSIGNED_INT_BYTE_SIZE);
+									ReadFileCell(hFile, bindInfo.Attributes, UNSIGNED_CHAR_BYTE_SIZE);
+									g_hNavMeshAreaVisibleAreas.PushArray(bindInfo, sizeof(bindInfo));
 
-							//LogMessage("Parsed visible area [%d] with attr [%d]", iVisibleAreaID, iVisibleAreaAttributes);
+									iVisibleAreasEndIndex = g_AreaVisibleAreasListStartIndex++;
+
+									//LogMessage("Parsed visible area [%d] with attr [%d]", iVisibleAreaID, iVisibleAreaAttributes);
+								}
+
+								iVisibleAreasEndIndex = g_hNavMeshAreaVisibleAreas.Length - 1;
+							}
+							
+							ReadFileCell(hFile, iInheritVisibilityFrom, UNSIGNED_INT_BYTE_SIZE);
+							
+							// LogMessage("Inherit visibilty from: %d", iInheritVisibilityFrom);
 						}
 					}
-					
-					ReadFileCell(hFile, iInheritVisibilityFrom, UNSIGNED_INT_BYTE_SIZE);
-					
-					//LogMessage("Inherit visibilty from: %d", iInheritVisibilityFrom);
 				}
 			}
 
@@ -1801,6 +1815,38 @@ bool NavMeshLoad(const char[] sMapName)
 	return true;
 }
 
+bool NavMeshLoadPlaceDirectory(File hFile, int iNavVersion, int iNavSubVersion)
+{
+	if (iNavVersion >= 5)
+	{
+		int iPlaceCount = 0;
+		ReadFileCell(hFile, iPlaceCount, UNSIGNED_SHORT_BYTE_SIZE);
+		LogMessage("Place count: %d", iPlaceCount);
+		
+		// Parse through places.
+		for (int iPlaceIndex = 0; iPlaceIndex < iPlaceCount; iPlaceIndex++) 
+		{
+			int iPlaceStringSize = 0;
+			ReadFileCell(hFile, iPlaceStringSize, UNSIGNED_SHORT_BYTE_SIZE);
+			
+			char sPlaceName[256];
+			ReadFileString(hFile, sPlaceName, sizeof(sPlaceName), iPlaceStringSize);
+			
+			g_hNavMeshPlaces.PushString(sPlaceName);
+
+			//LogMessage("Parsed place \"%s\" [index: %d]", sPlaceName, iPlaceIndex);
+		}
+		
+		// Get any unnamed areas.
+		int iNavUnnamedAreas = 0;
+		if (iNavVersion > 11)
+		{
+			ReadFileCell(hFile, iNavUnnamedAreas, UNSIGNED_CHAR_BYTE_SIZE);
+			LogMessage("Has unnamed areas: %s", iNavUnnamedAreas ? "true" : "false");
+		}
+	}
+}
+
 int NavMeshLoadHidingSpot(File hFile, int iOwnerAreaIndex)
 {
 	int iHidingSpotID;
@@ -1836,6 +1882,33 @@ bool NavMeshLoadCustomDataPreArea(File hFile, int iNavVersion, int iNavSubVersio
 	switch (GetEngineVersion())
 	{
 		// Insert other game-specific data stored in the mesh here.
+
+		case Engine_Left4Dead2:
+		{
+			if (7 < iNavSubVersion)
+			{
+				if (iNavSubVersion >= 12)
+				{
+					LogMessage("Population type: %s", g_TerrorNavMeshZombiePopulation);
+				}
+
+				int fogPlaceCount = 0;
+				ReadFileCell(hFile, fogPlaceCount, UNSIGNED_SHORT_BYTE_SIZE);
+				if (fogPlaceCount > 0)
+				{
+					for (int i = 0; i < fogPlaceCount; i++)
+					{
+						int uFogPlaceLen = 0;
+						ReadFileCell(hFile, uFogPlaceLen, UNSIGNED_SHORT_BYTE_SIZE);
+						
+						char sFogPlaceName[256];
+						ReadFileString(hFile, sFogPlaceName, sizeof(sFogPlaceName), uFogPlaceLen);
+
+						// LogMessage("Parsed fog place \"%s\"", sFogPlaceName);
+					}
+				}
+			}
+		}
 	}
 
 	return true;
@@ -1889,6 +1962,143 @@ bool NavMeshLoadAreaCustomData(File hFile, int iAreaIndex, int iNavVersion, int 
 						g_hNavMeshAreas.Set(iAreaIndex, endIndex, CSNavArea_ApproachInfoEndIndex);
 					}
 				}
+			}
+		}
+		case Engine_Left4Dead2:
+		{
+			if (iNavSubVersion == 0)
+				return true;
+			
+			// 0x300
+			int spawnAttributes = 0;
+			ReadFileCell(hFile, spawnAttributes, UNSIGNED_INT_BYTE_SIZE);
+
+			g_hNavMeshAreas.Set(iAreaIndex, spawnAttributes, TerrorNavArea_SpawnAttributes);
+			// LogMessage("SpawnAttributes = 0x%x", spawnAttributes);
+
+			if (iNavSubVersion < 2)
+			{
+				// Set some sort of property based on spawnAttributes.
+			}
+			else
+			{
+				if (iNavSubVersion < 10)
+				{
+					int unk01 = 0;
+					ReadFileCell(hFile, unk01, UNSIGNED_INT_BYTE_SIZE);
+
+					if (3 < iNavSubVersion)
+					{
+						int unk02 = 0;
+						ReadFileCell(hFile, unk02, UNSIGNED_INT_BYTE_SIZE);
+
+						if (iNavSubVersion - 5 < 8 )
+						{
+							int unk03 = 0;
+							ReadFileCell(hFile, unk03, UNSIGNED_INT_BYTE_SIZE);
+						}
+					}
+				}
+				else
+				{
+					if (iNavSubVersion - 5 < 8 )
+					{
+						int unk01 = 0;
+						ReadFileCell(hFile, unk01, UNSIGNED_INT_BYTE_SIZE);
+					}
+				}
+
+				if (7 < iNavSubVersion)
+				{
+					int fogPlaceId = 0;
+					ReadFileCell(hFile, fogPlaceId, UNSIGNED_SHORT_BYTE_SIZE);
+					// LogMessage("ushort %d [line %d]", fogPlaceId, __LINE__);
+				}
+			}
+
+			if ((spawnAttributes & 8) != 0 && iNavSubVersion < 10)
+			{
+				int unk01 = 0;
+				ReadFileCell(hFile, unk01, UNSIGNED_INT_BYTE_SIZE);
+				// LogMessage("uint %d [line %d]", unk01, __LINE__);
+
+				int unk02 = 0;
+				ReadFileCell(hFile, unk02, UNSIGNED_INT_BYTE_SIZE);
+				// LogMessage("uint %d [line %d]", unk02, __LINE__);
+
+				float unk03 = 0.0;
+				ReadFileCell(hFile, view_as<int>(unk03), FLOAT_BYTE_SIZE);
+				// LogMessage("float %f [line %d]", unk03, __LINE__);
+
+				float unk04 = 0.0;
+				ReadFileCell(hFile, view_as<int>(unk04), FLOAT_BYTE_SIZE);
+				// LogMessage("float %f [line %d]", unk04, __LINE__);
+
+				int unk05 = 0;
+				ReadFileCell(hFile, unk05, UNSIGNED_INT_BYTE_SIZE);
+				// LogMessage("uint %d [line %d]", unk05, __LINE__);
+			}
+
+			if (iNavSubVersion - 3 < 7)
+			{
+				int unk01 = 0;
+				ReadFileCell(hFile, unk01, UNSIGNED_CHAR_BYTE_SIZE);
+				// LogMessage("uchar %d [line %d]", unk01, __LINE__);
+
+				if (unk01 > 0)
+				{
+					for (int i = 0; i < unk01; i++)
+					{
+						int unk02 = 0;
+						ReadFileCell(hFile, unk02, UNSIGNED_INT_BYTE_SIZE);
+						// LogMessage("uint %d [line %d]", unk02, __LINE__);
+					}
+				}
+			}
+
+			if (iNavSubVersion >= 5)
+			{
+				int visibleAreaCount = 0;
+				ReadFileCell(hFile, visibleAreaCount, UNSIGNED_INT_BYTE_SIZE);
+				// LogMessage("uint %d [line %d]", visibleAreaCount, __LINE__);
+
+				if (visibleAreaCount > 0)
+				{
+					int startIndex = g_hNavMeshAreaVisibleAreas.Length;
+					int endIndex = -1;
+
+					for (int i = 0; i < visibleAreaCount; i++)
+					{
+						AreaBindInfo bindInfo;
+						bindInfo.Attributes = 0;
+						ReadFileCell(hFile, bindInfo.AreaIndex, UNSIGNED_INT_BYTE_SIZE);
+
+						if (iNavSubVersion >= 9)
+						{
+							ReadFileCell(hFile, bindInfo.Attributes, UNSIGNED_CHAR_BYTE_SIZE);
+						}
+
+						g_hNavMeshAreaVisibleAreas.PushArray(bindInfo, sizeof(bindInfo));
+					}
+
+					endIndex = g_hNavMeshAreaVisibleAreas.Length - 1;
+
+					g_hNavMeshAreas.Set(iAreaIndex, startIndex, NavMeshArea_VisibleAreasStartIndex);
+					g_hNavMeshAreas.Set(iAreaIndex, endIndex, NavMeshArea_VisibleAreasEndIndex);
+				}
+				else
+				{
+					g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_VisibleAreasStartIndex);
+					g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_VisibleAreasEndIndex);
+				}
+
+				int inheritVisibilityFrom = -1;
+				if (10 < iNavSubVersion)
+				{
+					ReadFileCell(hFile, inheritVisibilityFrom, UNSIGNED_INT_BYTE_SIZE);
+				}
+
+				g_hNavMeshAreas.Set(iAreaIndex, inheritVisibilityFrom, NavMeshArea_InheritVisibilityFrom);
 			}
 		}
 	}
@@ -1971,6 +2181,11 @@ bool NavMeshLoadCustomData(File hFile, int iNavVersion, int iNavSubVersion)
 	switch (GetEngineVersion())
 	{
 		// Insert other game-specific data stored in the mesh here.
+
+		case Engine_Left4Dead2:
+		{
+			ReadFileCell(hFile, view_as<int>(g_TerrorNavMeshNavMaxViewDistance), FLOAT_BYTE_SIZE);
+		}
 	}
 
 	return true;
@@ -2428,6 +2643,9 @@ stock int NavMeshAreaGetID(int iAreaIndex)
 
 stock int NavMeshFindAreaByID(int iAreaID)
 {
+	if (iAreaID == -1)
+		return -1;
+
 	char szAreaID[16];
 	IntToString(iAreaID, szAreaID, 16);
 	int iAreaIndex = -1;
@@ -3996,4 +4214,20 @@ public int Native_CSNavAreaGetApproachInfoList(Handle plugin, int numParams)
 		g_hCSNavAreaApproachInfo.GetArray( i, approachInfo, sizeof(approachInfo) );
 		buffer.PushArray(approachInfo, sizeof(approachInfo));
 	}
+}
+
+public int Native_TerrorNavMeshGetZombiePopulation(Handle plugin, int numParams)
+{
+	SetNativeString(2, g_TerrorNavMeshZombiePopulation, GetNativeCell(3));
+}
+
+public int Native_TerrorNavMeshGetNavMaxViewDistance(Handle plugin, int numParams)
+{
+	return g_TerrorNavMeshNavMaxViewDistance;
+}
+
+public int Native_TerrorNavAreaGetSpawnAttributes(Handle plugin, int numParams)
+{
+	if (!g_bNavMeshBuilt) return 0;
+	return g_hNavMeshAreas.Get(GetNativeCell(1), TerrorNavArea_SpawnAttributes);
 }

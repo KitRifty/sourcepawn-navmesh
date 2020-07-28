@@ -37,6 +37,8 @@ public void OnPluginStart()
 public void OnMapStart()
 {
 	g_iPathLaserModelIndex = PrecacheModel("materials/sprites/laserbeam.vmt");
+
+	g_flTrackNavAreaNextThink = 0.0;
 }
 
 void DrawNavArea( int client, CNavArea area, const int color[4], float duration=0.15 ) 
@@ -132,6 +134,10 @@ public void OnGameFrame()
 
 				switch (engineVersion)
 				{
+					case Engine_Left4Dead2:
+					{
+						PrintHintText(client, "ID: %d, # Connections: %d, # Incoming: %d", area.ID, connections.Length, incomingConnections.Length);
+					}
 					default:
 					{
 						SetHudTextParams(-1.0, 0.75, 0.2, 255, 255, 0, 150, 0, 0.0, 0.0, 0.0);

@@ -125,6 +125,15 @@ native void NavMesh_CollectSurroundingAreas(ArrayStack hStack, CNavArea startAre
 
 native bool NavMesh_BuildPath(CNavArea startArea, CNavArea goalArea, const float goalPos[3], NavPathCostFunctor costFunctor, any costData=0, CNavArea &closestArea=INVALID_NAV_AREA, float maxPathLength=0.0, float flMaxStepSize=0.0);
 
+enum CNavMesh
+{
+	TheNavMesh
+}
+
+methodmap CNavMesh
+{
+}
+
 // CNavArea
 
 native int NavMeshArea_GetID(int areaIndex);
@@ -520,6 +529,45 @@ enum struct CCSNavArea_ApproachInfo
 methodmap CCSNavArea < CNavArea
 {
 	public native void GetApproachInfoList( ArrayList buffer );
+}
+
+// TerrorNavArea
+// Bitflags for TerrorNavArea.SpawnAttributes
+enum
+{
+	TERROR_NAV_EMPTY = 2,
+	TERROR_NAV_STOP = 4,
+	TERROR_NAV_FINALE = 0x40,
+	TERROR_NAV_BATTLEFIELD = 0x100,
+	TERROR_NAV_PLAYER_START = 0x80,
+	TERROR_NAV_IGNORE_VISIBILITY = 0x200,
+	TERROR_NAV_NOT_CLEARABLE = 0x400,
+	TERROR_NAV_CHECKPOINT = 0x800,
+	TERROR_NAV_OBSCURED = 0x1000,
+	TERROR_NAV_NO_MOBS = 0x2000,
+	TERROR_NAV_THREAT = 0x4000,
+	TERROR_NAV_NOTHREAT = 0x80000,
+	TERROR_NAV_LYINGDOWN = 0x100000,
+	TERROR_NAV_RESCUE_CLOSET = 0x10000,
+	TERROR_NAV_RESCUE_VEHICLE = 0x8000
+}
+
+methodmap TerrorNavArea < CNavArea
+{
+	property int SpawnAttributes
+	{
+		public native get();
+	}
+}
+
+methodmap TerrorNavMesh < CNavMesh
+{
+	property float NavMaxViewDistance
+	{
+		public native get();
+	}
+
+	public native void GetZombiePopulation(char[] buffer, int maxSize);
 }
 
 // HidingSpot

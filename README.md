@@ -2,25 +2,26 @@
 
 This is basically a SourceMod plugin that can parse .NAV files and make data out of it that
 SourceMod plugins can read from. This plugin by itself doesn't do anything other than read
-data from the .NAV file. Other plugins have to utilize this plugin's features in order for 
+data from the .NAV file. Other plugins have to utilize this plugin's features in order for
 this to have any purpose.
 
-Special thanks goes to Anthony Iacano (pimpinjuice) for the parser code, which can be found here: 
+Special thanks goes to Anthony Iacano (pimpinjuice) for the parser code, which can be found here:
 https://github.com/AnthonyIacono/War3SourceV2/tree/master/Nav
 
 ## Requirements
+
 - SourceMod 1.10+
 
 ## Game Compatibility
 
-| Name | Supported? |
-| ---  | :---: |
-| Team Fortress 2 | :heavy_check_mark: |
+| Name                             |     Supported?     |
+| -------------------------------- | :----------------: |
+| Team Fortress 2                  | :heavy_check_mark: |
 | Counter-Strike: Global Offensive | :heavy_check_mark: |
-| Counter-Strike: Source | :heavy_check_mark: |
-| Left 4 Dead 2 | :x: |
+| Counter-Strike: Source           | :heavy_check_mark: |
+| Left 4 Dead 2                    | :heavy_check_mark: |
 
-If your game isn't listed here, there's a *slight* chance it may still work, just that it's never been tested. You really have to pray to God that the game doesn't append any custom data to the NavMesh and/or its areas (which, realistically, is hardly ever the case). It'll get pretty obvious that it doesn't work if you see the script loading in an infinite amount of areas, or you get a memory overflow, or the script execution just times out... whatever comes first, really.
+If your game isn't listed here, there's a _slight_ chance it may still work, just that it's never been tested. You really have to pray to God that the game doesn't append any custom data to the NavMesh and/or its areas (which, realistically, is hardly ever the case). It'll get pretty obvious that it doesn't work if you see the script loading in an infinite amount of areas, or you get a memory overflow, or the script execution just times out... whatever comes first, really.
 
 If your game doesn't natively support .NAV files, can you still use this plugin? [Yes.](../../wiki/Using-the-plugin-in-non-native-games)
 
@@ -44,7 +45,7 @@ class CNavArea
 }
 ```
 
-If it's the case that some of those functions are being overridden, then it'll give you a good starting point on where to look when disassembling a Linux server binary. If you do stumble upon custom data being loaded in a function, take note of all calls to `CUtlBuffer::GetType()` and `CUtlBuffer::Scanf()`. The `CUtlBuffer::Get<Type>()` functions are [inlined](https://github.com/ValveSoftware/source-sdk-2013/blob/master/sp/src/public/tier1/utlbuffer.h#L669), but it shouldn't be too hard to deduce which function is being called. 
+If it's the case that some of those functions are being overridden, then it'll give you a good starting point on where to look when disassembling a Linux server binary. If you do stumble upon custom data being loaded in a function, take note of all calls to `CUtlBuffer::GetType()` and `CUtlBuffer::Scanf()`. The `CUtlBuffer::Get<Type>()` functions are [inlined](https://github.com/ValveSoftware/source-sdk-2013/blob/master/sp/src/public/tier1/utlbuffer.h#L669), but it shouldn't be too hard to deduce which function is being called.
 
 If there aren't any subclasses, then you might not have to do anything and there's a chance that the plugin will work as is.
 
@@ -52,5 +53,5 @@ If you want to disassemble a Windows server binary, then God help you.
 
 ## Current Dev. Goals
 
-- **Move away from using `ArrayStack`.** Transition functions to push to a given `ArrayList` rather than allocate an `ArrayStack`. 
-- **Replace NavMeshArea_\* natives with CNavArea methodmap natives.** 
+- **Move away from using `ArrayStack`.** Transition functions to push to a given `ArrayList` rather than allocate an `ArrayStack`.
+- **Replace NavMeshArea\_\* natives with CNavArea methodmap natives.**
