@@ -372,7 +372,7 @@ public void OnPluginStart()
 	
 	HookEventEx("nav_blocked", Event_NavAreaBlocked);
 
-	g_hNavMeshPostLoadForward = new GlobalForward("NavMesh_PostLoad", ET_Ignore, Param_Cell);
+	g_hNavMeshPostLoadForward = new GlobalForward("OnNavMeshLoaded", ET_Ignore, Param_Cell);
 
 	switch (GetEngineVersion())
 	{

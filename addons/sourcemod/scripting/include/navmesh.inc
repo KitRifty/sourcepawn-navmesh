@@ -83,7 +83,7 @@ typedef NavPathCostFunctor = function int(CNavArea area, CNavArea from, CNavLadd
  * 
  * @param success		true if sucessful, false otherwise.
  */
-forward Action NavMesh_PostLoad(bool success);
+forward Action OnNavMeshLoaded(bool success);
 
 native bool NavMesh_Exists();
 
