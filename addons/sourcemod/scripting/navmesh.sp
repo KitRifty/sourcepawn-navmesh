@@ -322,6 +322,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("CNavArea.CostSoFar.get", Native_NavMeshAreaGetCostSoFar);
 	CreateNative("CNavArea.NECornerZ.get", Native_NavMeshAreaGetNECornerZ);
 	CreateNative("CNavArea.SWCornerZ.get", Native_NavMeshAreaGetSWCornerZ);
+	CreateNative("CNavArea.InheritVisibilityFrom", Native_CNavAreaGetInheritVisibilityFrom);
 	CreateNative("CNavArea.GetPlace", Native_NavMeshAreaGetPlace);
 	CreateNative("CNavArea.GetCenter", Native_NavMeshAreaGetCenter);
 	CreateNative("CNavArea.GetExtentLow", Native_NavMeshAreaGetExtentLow);
@@ -1808,6 +1809,12 @@ bool NavMeshLoad(const char[] sMapName)
 		}
 	}
 	
+	for (int areaIndex = 0; areaIndex < iAreaCount; areaIndex++)
+	{
+		int id = g_hNavMeshAreas.Get(areaIndex, NavMeshArea_InheritVisibilityFrom);
+		g_hNavMeshAreas.Set(areaIndex, NavMeshFindAreaByID(id), NavMeshArea_InheritVisibilityFrom);
+	}
+
 	if (g_hNavMeshAreaEncounterPaths.Length > 0)
 	{
 		for (int iIndex = 0, iSize = g_hNavMeshAreaEncounterPaths.Length; iIndex < iSize; iIndex++)
@@ -2562,6 +2569,21 @@ stock ArrayStack NavMeshGridGetAreas(x, y)
 	return hStack;
 }
 
+stock void NavMeshGridGetAreasEx(int x, int y, ArrayList buffer)
+{
+	int gridIndex = x + y * g_iNavMeshGridSizeX;
+	int startIndex = g_hNavMeshGrid.Get(gridIndex, NavMeshGrid_ListStartIndex);
+	int endIndex = g_hNavMeshGrid.Get(gridIndex, NavMeshGrid_ListEndIndex);
+
+	if (startIndex == -1)
+		return;
+	
+	for (int i = startIndex; i <= endIndex; i++)
+	{
+		buffer.Push(g_hNavMeshGridLists.Get(i, NavMeshGridList_AreaIndex));
+	}
+}
+
 stock int NavMeshGetNearestArea(float flPos[3], bool bAnyZ=false, float flMaxDist=10000.0, bool bCheckLOS=false, bool bCheckGround=true, bool bAllowBlocked=false, int iTeam=-2)
 {
 	if (g_hNavMeshGridLists.Length == 0) return -1;
@@ -2606,6 +2628,8 @@ stock int NavMeshGetNearestArea(float flPos[3], bool bAnyZ=false, float flMaxDis
 	
 	int iShiftLimit = RoundToCeil(flMaxDist / g_flNavMeshGridCellSize);
 	
+	ArrayList areas = new ArrayList();
+
 	for (int iShift = 0; iShift <= iShiftLimit; ++iShift)
 	{
 		for (int x = (iOriginX - iShift); x <= (iOriginX + iShift); ++x)
@@ -2624,84 +2648,69 @@ stock int NavMeshGetNearestArea(float flPos[3], bool bAnyZ=false, float flMaxDis
 					continue;
 				}
 				
-				ArrayStack hAreas = NavMeshGridGetAreas(x, y);
-				if (hAreas != null)
+				areas.Clear();
+				NavMeshGridGetAreasEx(x, y, areas);
+
+				for (int i = 0; i < areas.Length; i++)
 				{
-					while (!hAreas.Empty)
+					int iAreaIndex = areas.Get(i);
+
+					int iAreaNearSearchMarker = g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_NearSearchMarker);
+					if (iAreaNearSearchMarker == iSearchMarker) continue;
+					
+					if (!bAllowBlocked && g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_Blocked)) 
 					{
-						int iAreaIndex = -1;
-						PopStackCell(hAreas, iAreaIndex);
+						continue;
+					}
+					
+					g_hNavMeshAreas.Set(iAreaIndex, iSearchMarker, NavMeshArea_NearSearchMarker);
+					
+					float flAreaPos[3];
+					NavMeshAreaGetClosestPointOnArea(iAreaIndex, flSource, flAreaPos);
+					
+					float flDistSq = Pow(GetVectorDistance(flPos, flAreaPos), 2.0);
+					
+					if (flDistSq >= flClosestDistSq) continue;
+					
+					if (bCheckLOS)
+					{
+						float flSafePos[3];
+						float flStartPos[3];
+						float flEndPos[3];
+						flEndPos[0] = flPos[0];
+						flEndPos[1] = flPos[1];
+						flEndPos[2] = flPos[2] + StepHeight;
 						
-						int iAreaNearSearchMarker = g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_NearSearchMarker);
-						if (iAreaNearSearchMarker == iSearchMarker) continue;
+						Handle hTrace = TR_TraceRayFilterEx(flPos, flEndPos, MASK_NPCSOLID_BRUSHONLY, RayType_EndPoint, TraceRayIgnoreCustom);
+						float flFraction = TR_GetFraction(hTrace);
+						TR_GetEndPosition(flEndPos, hTrace);
+						delete hTrace;
 						
-						if (!bAllowBlocked && g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_Blocked)) 
+						if (flFraction == 0.0)
 						{
-							continue;
+							flSafePos[0] = flEndPos[0];
+							flSafePos[1] = flEndPos[1];
+							flSafePos[2] = flEndPos[2] + 1.0;
+						}
+						else
+						{
+							flSafePos[0] = flPos[0];
+							flSafePos[1] = flPos[1];
+							flSafePos[2] = flPos[2];
 						}
 						
-						g_hNavMeshAreas.Set(iAreaIndex, iSearchMarker, NavMeshArea_NearSearchMarker);
-						
-						float flAreaPos[3];
-						NavMeshAreaGetClosestPointOnArea(iAreaIndex, flSource, flAreaPos);
-						
-						float flDistSq = Pow(GetVectorDistance(flPos, flAreaPos), 2.0);
-						
-						if (flDistSq >= flClosestDistSq) continue;
-						
-						if (bCheckLOS)
+						float flHeightDelta = FloatAbs(flAreaPos[2] - flSafePos[2]);
+						if (flHeightDelta > StepHeight)
 						{
-							float flSafePos[3];
-							float flStartPos[3];
-							float flEndPos[3];
-							flEndPos[0] = flPos[0];
-							flEndPos[1] = flPos[1];
-							flEndPos[2] = flPos[2] + StepHeight;
-							
-							Handle hTrace = TR_TraceRayFilterEx(flPos, flEndPos, MASK_NPCSOLID_BRUSHONLY, RayType_EndPoint, TraceRayIgnoreCustom);
-							float flFraction = TR_GetFraction(hTrace);
-							TR_GetEndPosition(flEndPos, hTrace);
-							delete hTrace;
-							
-							if (flFraction == 0.0)
-							{
-								flSafePos[0] = flEndPos[0];
-								flSafePos[1] = flEndPos[1];
-								flSafePos[2] = flEndPos[2] + 1.0;
-							}
-							else
-							{
-								flSafePos[0] = flPos[0];
-								flSafePos[1] = flPos[1];
-								flSafePos[2] = flPos[2];
-							}
-							
-							float flHeightDelta = FloatAbs(flAreaPos[2] - flSafePos[2]);
-							if (flHeightDelta > StepHeight)
-							{
-								flStartPos[0] = flAreaPos[0];
-								flStartPos[1] = flAreaPos[1];
-								flStartPos[2] = flAreaPos[2] + StepHeight;
-								
-								flEndPos[0] = flAreaPos[0];
-								flEndPos[1] = flAreaPos[1];
-								flEndPos[2] = flSafePos[2];
-								
-								hTrace = TR_TraceRayFilterEx(flStartPos, flEndPos, MASK_NPCSOLID_BRUSHONLY, RayType_EndPoint, TraceRayIgnoreCustom);
-								flFraction = TR_GetFraction(hTrace);
-								delete hTrace;
-								
-								if (flFraction != 1.0)
-								{
-									continue;
-								}
-							}
+							flStartPos[0] = flAreaPos[0];
+							flStartPos[1] = flAreaPos[1];
+							flStartPos[2] = flAreaPos[2] + StepHeight;
 							
 							flEndPos[0] = flAreaPos[0];
 							flEndPos[1] = flAreaPos[1];
-							flEndPos[2] = flSafePos[2] + StepHeight;
+							flEndPos[2] = flSafePos[2];
 							
-							hTrace = TR_TraceRayFilterEx(flSafePos, flEndPos, MASK_NPCSOLID_BRUSHONLY, RayType_EndPoint, TraceRayIgnoreCustom);
+							hTrace = TR_TraceRayFilterEx(flStartPos, flEndPos, MASK_NPCSOLID_BRUSHONLY, RayType_EndPoint, TraceRayIgnoreCustom);
 							flFraction = TR_GetFraction(hTrace);
 							delete hTrace;
 							
@@ -2711,18 +2720,31 @@ stock int NavMeshGetNearestArea(float flPos[3], bool bAnyZ=false, float flMaxDis
 							}
 						}
 						
-						flClosestDistSq = flDistSq;
-						iClosestAreaIndex = iAreaIndex;
+						flEndPos[0] = flAreaPos[0];
+						flEndPos[1] = flAreaPos[1];
+						flEndPos[2] = flSafePos[2] + StepHeight;
 						
-						iShiftLimit = iShift + 1;
+						hTrace = TR_TraceRayFilterEx(flSafePos, flEndPos, MASK_NPCSOLID_BRUSHONLY, RayType_EndPoint, TraceRayIgnoreCustom);
+						flFraction = TR_GetFraction(hTrace);
+						delete hTrace;
+						
+						if (flFraction != 1.0)
+						{
+							continue;
+						}
 					}
 					
-					delete hAreas;
+					flClosestDistSq = flDistSq;
+					iClosestAreaIndex = iAreaIndex;
+					
+					iShiftLimit = iShift + 1;
 				}
 			}
 		}
 	}
 	
+	delete areas;
+
 	return iClosestAreaIndex;
 }
 
@@ -4197,6 +4219,11 @@ public int Native_NavMeshAreaGetNECornerZ(Handle plugin, int numParams)
 public int Native_NavMeshAreaGetSWCornerZ(Handle plugin, int numParams)
 {
 	return view_as<int>(NavMeshAreaGetSWCornerZ(GetNativeCell(1)));
+}
+
+public int Native_CNavAreaGetInheritVisibilityFrom(Handle plugin, int numParams)
+{
+	return g_hNavMeshAreas.Get(GetNativeCell(1), NavMeshArea_InheritVisibilityFrom);
 }
 
 public int Native_NavMeshAreaGetCorner(Handle plugin, int numParams)

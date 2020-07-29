@@ -333,6 +333,11 @@ methodmap CNavArea
 		public native get();
 	}
 	
+	property CNavArea InheritVisibilityFrom
+	{
+		public native get();
+	}
+
 	/**
 	 *	The place name of the area.
 	 *
@@ -511,11 +516,11 @@ methodmap CNavArea
 	 *	not have to be connected.
 	 *	
 	 *	.----------------------.
-	 *  |   |   |              |
-	 *  |   |<- | portal       |
+	 *	|   |   |              |
+	 *	|   |<- | portal       |
 	 *	|   |   |              |
 	 *	'---|                  |
-	 *		'------------------'
+	 *	    '------------------'
 	 *
 	 *	@param	to			The area to calculate the entryway to.
 	 *	@param	dir			The direction to calculate from.
