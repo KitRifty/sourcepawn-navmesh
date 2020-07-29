@@ -7,6 +7,8 @@
 
 #define PLUGIN_VERSION "1.0.6"
 
+CNavMesh TheNavMesh;
+
 int g_iPathLaserModelIndex = -1;
 
 public Plugin myinfo = 
@@ -21,7 +23,7 @@ public Plugin myinfo =
 float g_flTrackNavAreaThinkRate = 0.1;
 float g_flTrackNavAreaNextThink = 0.0;
 
-bool g_bPlayerTrackNavArea[MAXPLAYERS + 1] = { false, ... };
+int g_iPlayerTrackNavArea[MAXPLAYERS + 1] = { 0, ... };
 Handle g_hPlayerTrackNavAreaInfoHudSync = null;
 
 public void OnPluginStart()
@@ -92,61 +94,97 @@ public void OnGameFrame()
 			if (!IsClientInGame(client))
 				continue;
 			
-			if ( g_bPlayerTrackNavArea[client] )
+			switch (g_iPlayerTrackNavArea[client])
 			{
-				float flEyePos[3], flEyeDir[3], flEndPos[3];
-				GetClientEyePosition(client, flEyePos);
-				GetClientEyeAngles(client, flEyeDir);
-				GetAngleVectors(flEyeDir, flEyeDir, NULL_VECTOR, NULL_VECTOR);
-				NormalizeVector(flEyeDir, flEyeDir);
-				ScaleVector(flEyeDir, 1000.0);
-				AddVectors(flEyePos, flEyeDir, flEndPos);
-				
-				Handle hTrace = TR_TraceRayFilterEx(flEyePos,
-					flEndPos,
-					MASK_PLAYERSOLID_BRUSHONLY,
-					RayType_EndPoint,
-					TraceRayDontHitEntity,
-					client);
-				
-				TR_GetEndPosition(flEndPos, hTrace);
-				delete hTrace;
-
-				CNavArea area = NavMesh_GetNearestArea(flEndPos);
-				if (area == INVALID_NAV_AREA)
-					continue;
-				
-				DrawNavArea( client, area, FocusedAreaColor );
-
-				ArrayList connections = new ArrayList();
-				area.GetAdjacentList(NAV_DIR_COUNT, connections);
-				ArrayList incomingConnections = new ArrayList();
-				area.GetIncomingConnections(NAV_DIR_COUNT, incomingConnections);
-
-				for (int i = 0; i < connections.Length; i++)
+				case 1: // Test GetNearestNavArea
 				{
-					DrawNavArea(client, connections.Get(i), DefaultAreaColor);	
-				}
+					float flEyePos[3], flEyeDir[3], flEndPos[3];
+					GetClientEyePosition(client, flEyePos);
+					GetClientEyeAngles(client, flEyeDir);
+					GetAngleVectors(flEyeDir, flEyeDir, NULL_VECTOR, NULL_VECTOR);
+					NormalizeVector(flEyeDir, flEyeDir);
+					ScaleVector(flEyeDir, 1000.0);
+					AddVectors(flEyePos, flEyeDir, flEndPos);
+					
+					Handle hTrace = TR_TraceRayFilterEx(flEyePos,
+						flEndPos,
+						MASK_PLAYERSOLID_BRUSHONLY,
+						RayType_EndPoint,
+						TraceRayDontHitEntity,
+						client);
+					
+					TR_GetEndPosition(flEndPos, hTrace);
+					delete hTrace;
 
-				for (int i = 0; i < incomingConnections.Length; i++)
-				{
-				}
+					CNavArea area = TheNavMesh.GetNearestNavArea(flEndPos, GETNAVAREA_ALLOW_BLOCKED_AREAS | GETNAVAREA_CHECK_GROUND);
+					if (area == INVALID_NAV_AREA)
+						continue;
+					
+					DrawNavArea( client, area, FocusedAreaColor );
 
-				switch (engineVersion)
-				{
-					case Engine_Left4Dead2:
+					ArrayList connections = new ArrayList();
+					area.GetAdjacentAreas(NAV_DIR_COUNT, connections);
+					ArrayList incomingConnections = new ArrayList();
+					area.GetIncomingConnections(NAV_DIR_COUNT, incomingConnections);
+
+					for (int i = 0; i < connections.Length; i++)
 					{
-						PrintHintText(client, "ID: %d, # Connections: %d, # Incoming: %d", area.ID, connections.Length, incomingConnections.Length);
+						DrawNavArea(client, connections.Get(i), DefaultAreaColor);	
 					}
-					default:
-					{
-						SetHudTextParams(-1.0, 0.75, 0.2, 255, 255, 0, 150, 0, 0.0, 0.0, 0.0);
-						ShowSyncHudText(client, g_hPlayerTrackNavAreaInfoHudSync, "ID: %d\n# Connections: %d\n# Incoming: %d\n", area.ID, connections.Length, incomingConnections.Length);
-					}
-				}
 
-				delete connections;
-				delete incomingConnections;
+					for (int i = 0; i < incomingConnections.Length; i++)
+					{
+					}
+
+					switch (engineVersion)
+					{
+						case Engine_Left4Dead2:
+						{
+							PrintHintText(client, "ID: %d, # Connections: %d, # Incoming: %d", area.ID, connections.Length, incomingConnections.Length);
+						}
+						default:
+						{
+							SetHudTextParams(-1.0, 0.75, 0.2, 255, 255, 0, 150, 0, 0.0, 0.0, 0.0);
+							ShowSyncHudText(client, g_hPlayerTrackNavAreaInfoHudSync, "ID: %d\n# Connections: %d\n# Incoming: %d\n", area.ID, connections.Length, incomingConnections.Length);
+						}
+					}
+
+					delete connections;
+					delete incomingConnections;
+				}
+				case 2: // Test CollectSurroundingAreas
+				{
+					float pos[3];
+					float range = 800.0;
+					GetClientAbsOrigin(client, pos);
+
+					CNavArea area = TheNavMesh.GetNearestNavArea(pos, GETNAVAREA_ALLOW_BLOCKED_AREAS | GETNAVAREA_CHECK_GROUND);
+					if (area == INVALID_NAV_AREA)
+						continue;
+					
+					ArrayList areas = new ArrayList();
+					TheNavMesh.CollectSurroundingAreas(areas, area, _, range);
+
+					for (int i = 0; i < areas.Length; i++)
+					{
+						DrawNavArea(client, areas.Get(i), FocusedAreaColor);	
+					}
+
+					switch (engineVersion)
+					{
+						case Engine_Left4Dead2:
+						{
+							PrintHintText(client, "Range: %0.1f, # Areas: %d", range, areas.Length);
+						}
+						default:
+						{
+							SetHudTextParams(-1.0, 0.75, 0.2, 255, 255, 0, 150, 0, 0.0, 0.0, 0.0);
+							ShowSyncHudText(client, g_hPlayerTrackNavAreaInfoHudSync, "Range: %0.1f\n# Areas: %d", range, areas.Length);
+						}
+					}
+
+					delete areas;
+				}
 			}
 		}
 	}
@@ -154,29 +192,30 @@ public void OnGameFrame()
 
 public void OnClientDisconnect(int client)
 {
-	g_bPlayerTrackNavArea[client] = false;
+	g_iPlayerTrackNavArea[client] = 0;
 }
 
 public Action Command_Show(int client,int args)
 {
-	if (!NavMesh_Exists()) return Plugin_Handled;
+	if (!TheNavMesh.Exists) return Plugin_Handled;
 
 	if ( args < 1 ) 
 	{
-		ReplyToCommand(client, "Usage: sm_navmesh_show <0/1>");
+		ReplyToCommand(client, "Usage: sm_navmesh_show <0-2>");
 		return Plugin_Handled;
 	}
 
 	char sArg[16];
 	GetCmdArg(1, sArg, sizeof(sArg));
-	g_bPlayerTrackNavArea[client] = (StringToInt(sArg) != 0);
+	g_iPlayerTrackNavArea[client] = StringToInt(sArg);
 
 	return Plugin_Handled;
 }
 
 public Action Command_GetNearestArea(int client,int args)
 {
-	if (!NavMesh_Exists()) return Plugin_Handled;
+	if (!TheNavMesh.Exists) return Plugin_Handled;
+
 	float flEyePos[3], flEyeDir[3], flEndPos[3];
 	GetClientEyePosition(client, flEyePos);
 	GetClientEyeAngles(client, flEyeDir);
@@ -195,7 +234,7 @@ public Action Command_GetNearestArea(int client,int args)
 	TR_GetEndPosition(flEndPos, hTrace);
 	CloseHandle(hTrace);
 	
-	CNavArea area = NavMesh_GetNearestArea(flEndPos);
+	CNavArea area = TheNavMesh.GetNearestNavArea(flEndPos);
 	if (area != INVALID_NAV_AREA)
 	{
 		PrintToChat(client, "Nearest area ID: %d", area.ID);
@@ -221,14 +260,14 @@ public Action Command_NavMeshBuildPath(int client,int args)
 		return Plugin_Handled;
 	}
 	
-	if (!NavMesh_Exists()) return Plugin_Handled;
+	if (!TheNavMesh.Exists) return Plugin_Handled;
 	
 	char sStartAreaID[64], sGoalAreaID[64];
 	GetCmdArg(1, sStartAreaID, sizeof(sStartAreaID));
 	GetCmdArg(2, sGoalAreaID, sizeof(sGoalAreaID));
 	
-	CNavArea startArea =  NavMesh_FindAreaByID(StringToInt(sStartAreaID));
-	CNavArea goalArea = NavMesh_FindAreaByID(StringToInt(sGoalAreaID));
+	CNavArea startArea = TheNavMesh.GetNavAreaByID(StringToInt(sStartAreaID));
+	CNavArea goalArea = TheNavMesh.GetNavAreaByID(StringToInt(sGoalAreaID));
 	
 	if (startArea == INVALID_NAV_AREA || goalArea == INVALID_NAV_AREA) return Plugin_Handled;
 	
@@ -260,7 +299,7 @@ public Action Command_NavMeshBuildPath(int client,int args)
 	Profiler profiler = CreateProfiler();
 	profiler.Start();
 	
-	bool bBuiltPath = NavMesh_BuildPath(startArea, goalArea, flGoalPos, NavMeshShortestPathCost, _, closestArea, flMaxPathLength, flMaxStepSize);
+	bool bBuiltPath = TheNavMesh.BuildPath(startArea, goalArea, flGoalPos, NavMeshShortestPathCost, _, closestArea, flMaxPathLength, flMaxStepSize);
 	
 	profiler.Stop();
 	float flProfileTime = profiler.Time;

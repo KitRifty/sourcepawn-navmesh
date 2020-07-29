@@ -74,8 +74,25 @@ const HidingSpot INVALID_NAV_HIDING_SPOT = view_as<HidingSpot>(-1);
 
 typedef NavPathCostFunctor = function int(CNavArea area, CNavArea from, CNavLadder ladder, any data);
 
+typedef NavSearchSurroundingAreasFunctor = function bool(CNavArea area, CNavArea from, CNavLadder ladder, any data);
 
-// NavMesh
+// CNavMesh
+
+enum GetNavAreaFlags_t
+{
+	GETNAVAREA_CHECK_LOS			= 0x1,
+	GETNAVAREA_ALLOW_BLOCKED_AREAS	= 0x2,
+	GETNAVAREA_CHECK_GROUND			= 0x4,
+}
+
+enum SearchSurroundingAreasFlags_t
+{
+	SEARCHSURROUNDAREAS_NONE = 0,
+	SEARCHSURROUNDAREAS_INCLUDE_INCOMING_CONNECTIONS	= 0x1,
+	SEARCHSURROUNDAREAS_INCLUDE_BLOCKED_AREAS = 0x2,
+	SEARCHSURROUNDAREAS_EXCLUDE_OUTGOING_CONNECTIONS	= 0x4,
+	SEARCHSURROUNDAREAS_EXCLUDE_ELEVATORS				= 0x8
+}
 
 /**
  * Called when the plugin finishes loading the navigation mesh, even if it fails. Called within the
@@ -83,120 +100,160 @@ typedef NavPathCostFunctor = function int(CNavArea area, CNavArea from, CNavLadd
  * 
  * @param success		true if sucessful, false otherwise.
  */
-forward Action NavMesh_PostLoad(bool success);
-
-native bool NavMesh_Exists();
-
-native int NavMesh_GetMagicNumber();
-
-native int NavMesh_GetVersion();
-
-native int NavMesh_GetSubVersion();
-
-native int NavMesh_GetSaveBSPSize();
-
-native bool NavMesh_IsAnalyzed();
-
-native bool NavMesh_GetGroundHeight(const float pos[3], float &height=-1.0, float normal[3]=NULL_VECTOR);
-
-native CNavArea NavMesh_FindAreaByID( int areaID );
-
-native CNavArea NavMesh_GetArea(const float pos[3], float beneathLimit=120.0);
-
-native CNavArea NavMesh_GetNearestArea(const float pos[3], bool anyZ=false, float maxDist=10000.0, bool checkLOS=false, bool checkGround=true, int team=-2);
-
-native HidingSpot NavMesh_FindHidingSpotByID(int hidingSpotID);
-
-native HidingSpot NavMesh_GetRandomHidingSpot();
-
-// These grid functions are more internal than anything.
-native int NavMesh_WorldToGridX(float wx);
-
-native int NavMesh_WorldToGridY(float wy);
-
-native void NavMesh_GetAreasOnGrid(ArrayStack hStack, int x, int y);
-
-native int NavMesh_GetGridSizeX();
-
-native int NavMesh_GetGridSizeY();
-
-
-native void NavMesh_CollectSurroundingAreas(ArrayStack hStack, CNavArea startArea, float travelDistLimit=1500.0, float maxStepUpLimit=StepHeight, float maxDropDownLimit=100.0);
-
-native bool NavMesh_BuildPath(CNavArea startArea, CNavArea goalArea, const float goalPos[3], NavPathCostFunctor costFunctor, any costData=0, CNavArea &closestArea=INVALID_NAV_AREA, float maxPathLength=0.0, float flMaxStepSize=0.0);
-
-enum CNavMesh
-{
-	TheNavMesh
-}
+forward Action OnNavMeshLoaded(bool success);
 
 methodmap CNavMesh
 {
+	public CNavMesh( int index ) { return view_as<CNavMesh>(index); }
+
+	/**
+	 *	Specifies if the plugin was successful in loading the nav mesh or not.
+	 */
+	property bool Exists
+	{
+		public native get();
+	}
+
+	/**
+	 *	The magic number of the loaded nav mesh.
+	 */
+	property int MagicNumber
+	{
+		public native get();
+	}
+
+	/**
+	 *	The version of the nav mesh.
+	 */
+	property int Version
+	{
+		public native get();
+	}
+
+	/**
+	 *	The subversion of the nav mesh.
+	 */
+	property int Subversion
+	{
+		public native get();
+	}
+
+	/**
+	 *	The size of the map that the nav mesh was built for.
+	 */
+	property int SaveBSPSize
+	{
+		public native get();
+	}
+
+	/**
+	 *	Specifies if the nav mesh has been analyzed.
+	 */
+	property bool Analyzed
+	{
+		public native get();
+	}
+
+	/**
+	 *	Given a position, returns the height of the point from the nav mesh.
+	 *
+	 *	@param	pos			The position to check.
+	 *	@param	height		Height of the position from the nav mesh.
+	 *	@param	normal		Optional. The normal vector of the ground beneath the point.
+	 *	@return				True if successful; false otherwise.
+	 */
+	public native bool GetGroundHeight(const float pos[3], float &height=-1.0, float normal[3]=NULL_VECTOR);
+
+	/**
+	 *	Given an id, returns the area associated with that id.
+	 *
+	 *	@param	id	The id of the area to search for.
+	 *	@return		A CNavArea, or INVALID_NAV_AREA if no area can be found.
+	 */
+	public native CNavArea GetNavAreaByID(int id);
+
+	/**
+	 *	Given a position, return the nav area that IsOverlapping() and is immediately beneath it.
+	 *
+	 *	@param	pos				The position to check.
+	 *	@param	beneathLimit	How far down an area can be to still be considered overlapping.
+	 *	@return					The CNavArea directly below pos, or INVALID_NAV_AREA if no area can be found.
+	 */
+	public native CNavArea GetNavArea(const float pos[3], float beneathLimit=120.0);
+
+	/**
+	 *	Given a position in the world, return the nav area that is closest and at the same height, or beneath it.
+	 *	Used to find initial area if we start off of the mesh.
+	 *	
+	 *	@param	pos				The position to check.
+	 *	@param	nGetAreaFlags	Flags that filter area by attribute.
+	 *	@param	maxDist			Maximum distance to search from pos.
+	 *	@param	team			
+	 *	@return					A CNavArea, or INVALID_NAV_AREA if no area can be found.
+	 */
+	public native CNavArea GetNearestNavArea(const float pos[3], GetNavAreaFlags_t nGetAreaFlags=GETNAVAREA_CHECK_GROUND, float maxDist=10000.0, int team=-2);
+
+	/**
+	 *	Given an id, returns the hiding spot associated with that id.
+	 *
+	 *	@param	id	The id of the spot to search for.
+	 *	@return		A HidingSpot, or INVALID_NAV_HIDING_SPOT if no spot can be found.
+	 */
+	public native HidingSpot GetHidingSpotByID(int id);
+
+	/**
+	 *	Returns a random hiding spot in the nav mesh.
+	 *
+	 *	@return		A HidingSpot, or INVALID_NAV_HIDING_SPOT if no spot can be found.
+	 */
+	public native HidingSpot GetRandomHidingSpot();
+
+	/**
+	 *	Iterate through areas surrounding startArea.
+	 *
+	 *	@param	startArea			The starting area.
+	 *	@param	filterFunc			The function that (after checking if area's blocked/cost/height change) determines if search should 
+	 *								continue outward from the current area.
+	 *	@param	filterData			Optional. User-defined data to pass to filterFunc.
+	 *	@param	options				Optional. Flags that change behavior of this function. See SearchSurroundingAreasFlags_t.
+	 *	@param	maxRange			Optional. Maximum travel distance to search.
+	 *	@param	maxStepSize			Optional. Maximum position height change allowed to next area. If 0.0, then no limit.
+	 *	@param	maxDropDownLimit	Optional. Maximum negative height change allowed to next area. If 0.0, then no limit.
+	 */
+	public native void SearchSurroundingAreas(CNavArea startArea, NavSearchSurroundingAreasFunctor filterFunc, any filterData=0, SearchSurroundingAreasFlags_t options=SEARCHSURROUNDAREAS_NONE, float maxRange=1500.0, float maxStepSize=StepHeight, float maxDropDownLimit=100.0);
+
+	/**
+	 *	Collect areas surrounding startArea. This uses SearchSurroundingAreas() internally.
+	 *
+	 *	@param	areas				Buffer that receives the areas.
+	 *	@param	startArea			The starting area.
+	 *	@param	options				Optional. Flags that change behavior of this function. See SearchSurroundingAreasFlags_t.
+	 *	@param	maxRange			Optional. Maximum travel distance to search.
+	 *	@param	maxStepSize			Optional. Maximum position height change allowed to next area. If 0.0, then no limit.
+	 *	@param	maxDropDownLimit	Optional. Maximum negative height change allowed to next area. If 0.0, then no limit.
+	 */
+	public native void CollectSurroundingAreas(ArrayList areas, CNavArea startArea, SearchSurroundingAreasFlags_t options=SEARCHSURROUNDAREAS_NONE, float maxRange=1500.0, float maxStepSize=StepHeight, float maxDropDownLimit=100.0);
+
+	/**
+	 *	Find path from startArea to goalArea via an A* search, using supplied cost heuristic.
+	 *	If cost functor returns -1 for an area, that area is considered a dead end.
+	 *	This doesn't actually build a path, but the path is defined by following the Parent area back from goalArea 
+	 *	to startArea.
+	 *	
+	 *	@param	startArea		The starting area.
+	 *	@param	goalArea		The goal area.
+	 *	@param	goalPos			The goal position on the goal area.
+	 *	@param	costFunctor		A callback function that calculates the total cost of the current area.
+	 *							If cost functor returns -1, that area is considered a dead end.
+	 *	@param	costData		Optional. User-defined data to pass to costFunctor.
+	 *	@param	closestArea		Optional. If path fails, contains the closest area to goal; if path success, the
+	 *							goal area.
+	 *	@param	maxPathLength	Optional. Maximum cost so far allowed on the path.
+	 * 	@param	maxStepSize		Optional. Maximum connection height change between areas on the path.
+	 *	@return					True if the built path reaches goalArea; false if it can't reach goalArea.
+	 */
+	public native bool BuildPath(CNavArea startArea, CNavArea goalArea, const float goalPos[3], NavPathCostFunctor costFunctor, any costData=0, CNavArea &closestArea=INVALID_NAV_AREA, float maxPathLength=0.0, float maxStepSize=0.0);
 }
-
-// CNavArea
-
-native int NavMeshArea_GetID(int areaIndex);
-
-native int NavMeshArea_GetFlags(int areaIndex);
-
-native void NavMeshArea_GetPlace(int areaIndex, char[] buffer, int maxlen);
-
-native bool NavMeshArea_GetCenter(int areaIndex, float buffer[3]);
-
-native void NavMeshArea_GetAdjacentList(ArrayStack buffer, int areaIndex, int dir);
-
-native void NavMeshArea_GetLadderList(ArrayStack buffer, int areaIndex, int dir);
-
-native void NavMeshArea_GetHidingSpots(ArrayStack buffer, int areaIndex);
-
-native void NavMeshArea_GetClosestPointOnArea(int areaIndex, const float pos[3], float closePos[3]);
-
-native int NavMeshArea_GetTotalCost(int areaIndex);
-
-native int NavMeshArea_GetCostSoFar(int areaIndex);
-
-native int NavMeshArea_GetParent(int areaIndex);
-
-native int NavMeshArea_GetParentHow(int areaIndex);
-
-native void NavMeshArea_SetParent(int areaIndex, int parentAreaIndex);
-
-native void NavMeshArea_SetParentHow(int areaIndex, int parentHow);
-
-native bool NavMeshArea_GetExtentLow(int areaIndex, float buffer[3]);
-
-native bool NavMeshArea_GetExtentHigh(int areaIndex, float buffer[3]);
-
-native bool NavMeshArea_IsOverlappingPoint(int areaIndex, const float pos[3], float tolerance);
-
-native bool NavMeshArea_IsOverlappingArea(int areaIndex, int targetAreaIndex);
-
-native float NavMeshArea_GetNECornerZ(int areaIndex);
-
-native float NavMeshArea_GetSWCornerZ(int areaIndex);
-
-native void NavMeshArea_GetCorner(int areaIndex, NavCornerType corner, float buffer[3]);
-
-native float NavMeshArea_GetZ(int areaIndex, const float pos[3]);
-
-native float NavMeshArea_GetZFromXAndY(int areaIndex, float x, float y);
-
-native bool NavMeshArea_IsEdge(int areaIndex, int dir);
-
-native bool NavMeshArea_Contains(int areaIndex, const float pos[3]);
-
-native void NavMeshArea_GetRandomPoint(int areaIndex, float buffer[3]);
-
-native bool NavMeshArea_IsConnected(int areaIndex, int targetAreaIndex, int dir);
-
-native bool NavMeshArea_ComputePortal(int areaIndex, int areaToIndex, int dir, float center[3], float &halfWidth);
-
-native bool NavMeshArea_ComputeClosestPointInPortal(int areaIndex, int areaToIndex, int dir, const float fromPos[3], float closePos[3]);
-
-native int NavMeshArea_ComputeDirection(int areaIndex, const float pos[3]);
-
-native float NavMeshArea_GetLightIntensity(int areaIndex, const float pos[3]);
 
 methodmap CNavArea
 {
@@ -210,82 +267,128 @@ methodmap CNavArea
 		public get() { return view_as<int>(this); }
 	}
 	
+	/**
+	 *	The id of the area.
+	 */
 	property int ID
 	{
-		public get() { return NavMeshArea_GetID(this.Index); }
+		public native get();
 	}
 	
+	/**
+	 *	The base attributes of the area.
+	 */
 	property int Attributes
 	{
-		public get() { return NavMeshArea_GetFlags(this.Index); }
+		public native get();
 	}
 	
+	/**
+	 *	The parent of the area. Used in A* pathfiding.
+	 */
 	property CNavArea Parent
 	{
-		public get() { return CNavArea(NavMeshArea_GetParent(this.Index)); }
-		public set( CNavArea area ) { NavMeshArea_SetParent(this.Index, area.Index); }
+		public native get();
+		public native set( CNavArea area );
 	}
 	
+	/**
+	 *	Method to reach the parent area. Used in A* pathfiding.
+	 */
 	property int ParentHow
 	{
-		public get() { return NavMeshArea_GetParentHow(this.Index); }
-		public set( int how ) { NavMeshArea_SetParentHow(this.Index, how); }
+		public native get();
+		public native set( int how );
 	}
 	
+	/**
+	 *	The total cost; that is, cost so far + heuristic. Used in A* pathfinding.
+	 */
 	property int TotalCost
 	{
-		public get() { return NavMeshArea_GetTotalCost(this.Index); }
+		public native get();
 	}
 	
+	/**
+	 *	The travel cost so far, or current progress. Used in A* pathfinding.
+	 */
 	property int CostSoFar
 	{
-		public get() { return NavMeshArea_GetCostSoFar(this.Index); }
+		public native get();
 	}
 	
+	/**
+	 *	The Z component of this area's northeast corner.
+	 */
 	property float NECornerZ
 	{
-		public get() { return NavMeshArea_GetNECornerZ(this.Index); }
+		public native get();
 	}
 	
+	/**
+	 *	The Z component of this area's southwest corner.
+	 */
 	property float SWCornerZ
 	{
-		public get() { return NavMeshArea_GetSWCornerZ(this.Index); }
+		public native get();
 	}
 	
-	public void GetPlace( char[] buffer, int maxlen )
-	{
-		NavMeshArea_GetPlace(this.Index, buffer, maxlen);
-	}
+	/**
+	 *	The place name of the area.
+	 *
+	 *	@param	buffer	The buffer to store the place name.
+	 *	@param	maxlen	The max length of the buffer.
+	 */
+	public native void GetPlace( char[] buffer, int maxlen );
 	
-	public bool GetCenter( float buffer[3] )
-	{
-		return NavMeshArea_GetCenter(this.Index, buffer);
-	}
+	/**
+	 *	The center point of the area.
+	 *
+	 *	@param	buffer	The center point.
+	 *	@return			True if successful, false otherwise.
+	 */
+	public native bool GetCenter( float buffer[3] );
 	
-	public bool GetExtentLow( float buffer[3] )
-	{
-		return NavMeshArea_GetExtentLow(this.Index, buffer);
-	}
+	/**
+	 *	The low corner of the area; lowest x,y components.
+	 *
+	 *	@param	buffer	
+	 *	@return			True if successful, false otherwise.
+	 */
+	public native bool GetExtentLow( float buffer[3] );
 	
-	public bool GetExtentHigh( float buffer[3] )
-	{
-		return NavMeshArea_GetExtentHigh(this.Index, buffer);
-	}
+	/**
+	 *	The high corner of the area; highest x,y components.
+	 *
+	 *	@param	buffer	
+	 *	@return			True if successful, false otherwise.
+	 */
+	public native bool GetExtentHigh( float buffer[3] );
 	
-	public void GetCorner( NavCornerType corner, float buffer[3] )
-	{
-		NavMeshArea_GetCorner( this.Index, corner, buffer );
-	}
+	/**
+	 *	Retrieves the corner point of the given corner type.
+	 *
+	 *	@param	corner	The corner type.
+	 *	@param	buffer
+	 */
+	public native void GetCorner( NavCornerType corner, float buffer[3] );
 	
-	public float GetZ( const float point[3] )
-	{
-		return NavMeshArea_GetZ(this.Index, point);
-	}
+	/**
+	 *	Calculates the Z component of the given point on the area.
+	 *
+	 *	@param 	point	The point to calculate from.
+	 *	@return			The Z component of the point on area.
+	 */
+	public native float GetZ( const float point[3] );
 	
-	public float GetZFromXAndY( float x, float y )
-	{
-		return NavMeshArea_GetZFromXAndY(this.Index, x, y);
-	}
+	/**
+	 *	Calculates the Z component of the given x and y components on the area.
+	 *
+	 *	@param 	x
+	 *	@param	y
+	 *	@return		The Z component of the point on area.
+	 */
+	public native float GetZFromXAndY( float x, float y );
 	
 	/**
 	 * Returns whether or not the area overlaps the given point. The Z-axis is not checked.
@@ -294,10 +397,7 @@ methodmap CNavArea
 	 * @param	tolerance	How many units the point can be away from the edge of the area.
 	 * @return				true if overlapping, false otherwise.
 	 */
-	public bool IsOverlappingPoint( const float point[3], float tolerance=0.0 )
-	{
-		return NavMeshArea_IsOverlappingPoint(this.Index, point, tolerance);
-	}
+	public native bool IsOverlappingPoint( const float point[3], float tolerance=0.0 );
 	
 	/**
 	 * Returns whether or not the area overlaps the given area. The Z-axis is not checked.
@@ -305,10 +405,7 @@ methodmap CNavArea
 	 * @param	area	The area to check.
 	 * @return			true if overlapping, false otherwise.
 	 */
-	public bool IsOverlappingArea( CNavArea area )
-	{
-		return NavMeshArea_IsOverlappingArea(this.Index, area.Index);
-	}
+	public native bool IsOverlappingArea( CNavArea area );
 	
 	/**
 	 * Returns whether or not the given point is contained by the area.
@@ -319,10 +416,7 @@ methodmap CNavArea
 	 * @param	point	The point to check.
 	 * @return			true if the point is contained by the area, false otherwise.
 	 */
-	public bool Contains( const float point[3] )
-	{
-		return NavMeshArea_Contains(this.Index, point);
-	}
+	public native bool Contains( const float point[3] );
 	
 	/**
 	 * Returns whether or not if there are no bi-directional links in the given direction of the area.
@@ -334,33 +428,20 @@ methodmap CNavArea
 	 * @param	dir		Direction to check.
 	 * @return			true if there are no bi-directional connections; false otherwise.
 	 */
-	public bool IsEdge( int dir )
-	{
-		return NavMeshArea_IsEdge(this.Index, dir);
-	}
+	public native bool IsEdge( int dir );
 	
-	public void GetRandomPoint( float buffer[3] )
-	{
-		NavMeshArea_GetRandomPoint(this.Index, buffer);
-	}
+	public native void GetRandomPoint( float buffer[3] );
 	
 	/**
-	 * Returns whether or not there exists a bi-directional/outgoing one-way link to targetArea in
-	 * the provided direction.
+	 * Returns whether or not there exists an outgoing link to targetArea in the provided direction.
 	 *
 	 * @param	targetArea	The area to check for.
 	 * @param	dir			The direction to check. If NAV_DIR_COUNT is the direction, all directions will be checked.
 	 * @return				true if there exists a link, false otherwise.
 	 */
-	public bool IsConnected( CNavArea targetArea, int dir )
-	{
-		return NavMeshArea_IsConnected(this.Index, targetArea.Index, dir);
-	}
+	public native bool IsConnected( CNavArea targetArea, int dir );
 	
-	public void GetClosestPointOnArea( const float pos[3], float buffer[3] )
-	{
-		NavMeshArea_GetClosestPointOnArea(this.Index, pos, buffer);
-	}
+	public native void GetClosestPointOnArea( const float pos[3], float buffer[3] );
 	
 	/**
 	 * Retrieves all bi-directional and one-way OUTGOING connections from this area and stores CNavArea's in the
@@ -369,30 +450,14 @@ methodmap CNavArea
 	 * Note: This does NOT include one-way INCOMING connections. Use GetIncomingConnections() for that.
 	 *
 	 * @param	dir		Direction to check.
-	 * @param	buffer	An ArrayStack to insert the CNavArea's in.
-	 * @deprecated		Use CNavArea.GetAdjacentList() instead.
-	 */
-	#pragma deprecated Use CNavArea.GetAdjacentList() instead.
-	public void GetAdjacentAreas( int dir, ArrayStack buffer )
-	{
-		NavMeshArea_GetAdjacentList( buffer, this.Index, dir );
-	}
-
-	/**
-	 * Retrieves all bi-directional and one-way OUTGOING connections from this area and stores CNavArea's in the
-	 * provided buffer.
-	 *
-	 * Note: This does NOT include one-way INCOMING connections. Use GetIncomingConnections() for that.
-	 *
-	 * @param	dir		Direction to check. If NAV_DIR_COUNT is the direction, all directions will be checked.
 	 * @param	buffer	An ArrayList to insert the CNavArea's in.
 	 */
-	public native void GetAdjacentList( int dir, ArrayList buffer );
-	
+	public native void GetAdjacentAreas( int dir, ArrayList buffer );
+
 	public CNavArea GetRandomAdjacentArea( int dir )
 	{
 		ArrayList list = new ArrayList();
-		this.GetAdjacentList(dir, list);
+		this.GetAdjacentAreas(dir, list);
 		CNavArea area = list.Length > 0 ? CNavArea( list.Get( GetRandomInt(0, list.Length - 1) ) ) : INVALID_NAV_AREA;
 		delete list;
 		return area;
@@ -411,7 +476,7 @@ methodmap CNavArea
 	{
 		int count = 0;
 		ArrayList list = new ArrayList();
-		this.GetAdjacentList(dir, list);
+		this.GetAdjacentAreas(dir, list);
 		count = list.Length;
 		delete list;
 		return count;
@@ -426,39 +491,56 @@ methodmap CNavArea
 	 */
 	public native void GetIncomingConnections( int dir, ArrayList buffer );
 	
-	public void GetLadders( int dir, ArrayStack buffer )
-	{
-		NavMeshArea_GetLadderList( buffer, this.Index, dir );
-	}
+	/**
+	 *	Gets all ladders connected to the area.
+	 *
+	 *	@param	dir		Ladder direction to check.
+	 *	@param	buffer	Buffer that will receive the ladders.
+	 */
+	public native void GetLadders( int dir, ArrayList buffer );
 	
-	public void GetHidingSpots( ArrayStack buffer )
-	{
-		NavMeshArea_GetHidingSpots( buffer, this.Index );
-	}
+	/**
+	 *	Gets all hiding spots associated with the area.
+	 *
+	 *	@param	buffer	Buffer that will receive the hiding spots.
+	 */
+	public native void GetHidingSpots( ArrayList buffer );
 	
-	public void ComputePortal( CNavArea to, int dir, float center[3], float &halfWidth )
-	{
-		NavMeshArea_ComputePortal(this.Index, to.Index, dir, center, halfWidth);
-	}
+	/**
+	 *	Computes the "entryway" to the specified area and direction from this area. The given area does
+	 *	not have to be connected.
+	 *	
+	 *	.----------------------.
+	 *  |   |   |              |
+	 *  |   |<- | portal       |
+	 *	|   |   |              |
+	 *	'---|                  |
+	 *		'------------------'
+	 *
+	 *	@param	to			The area to calculate the entryway to.
+	 *	@param	dir			The direction to calculate from.
+	 *	@param	center		The center of the portal.
+	 *	@param	halfWidth	The half width of the portal.
+	 */
+	public native void ComputePortal( CNavArea to, int dir, float center[3], float &halfWidth );
 	
-	public void ComputeClosestPointInPortal( CNavArea to, int dir, const float fromPos[3], float closePos[3] )
-	{
-		NavMeshArea_ComputeClosestPointInPortal(this.Index, to.Index, dir, fromPos, closePos);
-	}
+	/**
+	 *	Computes the portal to the specified area, and calculates the closest point to the given point
+	 *	within the portal.
+	 *
+	 *	@param	to			The area to calculate the entryway to.
+	 *	@param	dir			The direction to calcucate from.
+	 *	@param	fromPos		The point to calculate from.
+	 *	@param	closePos	The closest point to fromPos within the portal.
+	 */
+	public native void ComputeClosestPointInPortal( CNavArea to, int dir, const float fromPos[3], float closePos[3] );
 	
-	public int ComputeDirection( const float point[3] )
-	{
-		return NavMeshArea_ComputeDirection(this.Index, point);
-	}
+	public native int ComputeDirection( const float point[3] );
 	
-	public float GetLightIntensity( const float point[3] )
-	{
-		return NavMeshArea_GetLightIntensity(this.Index, point);
-	}
+	public native float GetLightIntensity( const float point[3] );
 }
 
 // CTFNavArea
-// Admittedly VERY questionable to include this (because it's from the recent leak), but feel free to not use them if you so please.
 // Bitflags for CTFNavArea's AttributeFlags property.
 enum
 {
@@ -554,6 +636,9 @@ enum
 
 methodmap TerrorNavArea < CNavArea
 {
+	/**
+	 *	Attributes that define the Director's spawning behavior in this area.
+	 */
 	property int SpawnAttributes
 	{
 		public native get();
@@ -567,6 +652,13 @@ methodmap TerrorNavMesh < CNavMesh
 		public native get();
 	}
 
+	/**
+	 *	Returns the type of zombies to be spawned in the map; the default population string.
+	 *	See here for more info: https://developer.valvesoftware.com/wiki/Left_4_Dead_Infected_Populations
+	 *
+	 *	@param	buffer		
+	 * 	@param	maxSize		Size of buffer
+	 */
 	public native void GetZombiePopulation(char[] buffer, int maxSize);
 }
 
@@ -933,6 +1025,155 @@ public bool TraceFilterWalkableEntities(int entity, int mask, any iFlags)
 	return !IsEntityWalkable(entity, iFlags);
 }
 
+#pragma deprecated Use CNavMesh.Exists instead.
+native bool NavMesh_Exists();
+
+#pragma deprecated Use CNavMesh.MagicNumber instead.
+native int NavMesh_GetMagicNumber();
+
+#pragma deprecated Use CNavMesh.Version instead.
+native int NavMesh_GetVersion();
+
+#pragma deprecated Use CNavMesh.Subversion instead.
+native int NavMesh_GetSubVersion();
+
+#pragma deprecated Use CNavMesh.SaveBSPSize instead.
+native int NavMesh_GetSaveBSPSize();
+
+#pragma deprecated Use CNavMesh.Analyzed instead.
+native bool NavMesh_IsAnalyzed();
+
+#pragma deprecated Use CNavMesh.GetGroundHeight() instead.
+native bool NavMesh_GetGroundHeight(const float pos[3], float &height=-1.0, float normal[3]=NULL_VECTOR);
+
+#pragma deprecated Use CNavMesh.GetNavAreaByID() instead.
+native CNavArea NavMesh_FindAreaByID( int areaID );
+
+#pragma deprecated Use CNavMesh.GetNavArea() instead.
+native CNavArea NavMesh_GetArea(const float pos[3], float beneathLimit=120.0);
+
+#pragma deprecated Use CNavMesh.GetNearestNavArea() instead.
+native CNavArea NavMesh_GetNearestArea(const float pos[3], bool anyZ=false, float maxDist=10000.0, bool checkLOS=false, bool checkGround=true, int team=-2);
+
+#pragma deprecated Use CNavMesh.GetHidingSpotByID() instead.
+native HidingSpot NavMesh_FindHidingSpotByID(int hidingSpotID);
+
+#pragma deprecated Use CNavMesh.GetRandomHidingSpot() instead.
+native HidingSpot NavMesh_GetRandomHidingSpot();
+
+#pragma deprecated This function will be removed in the future.
+native int NavMesh_WorldToGridX(float wx);
+
+#pragma deprecated This function will be removed in the future.
+native int NavMesh_WorldToGridY(float wy);
+
+#pragma deprecated This function will be removed in the future.
+native void NavMesh_GetAreasOnGrid(ArrayStack hStack, int x, int y);
+
+#pragma deprecated This function will be removed in the future.
+native int NavMesh_GetGridSizeX();
+
+#pragma deprecated This function will be removed in the future.
+native int NavMesh_GetGridSizeY();
+
+#pragma deprecated Use CNavMesh.CollectSurroundingAreas() instead.
+native void NavMesh_CollectSurroundingAreas(ArrayStack hStack, CNavArea startArea, float travelDistLimit=1500.0, float maxStepUpLimit=StepHeight, float maxDropDownLimit=100.0);
+
+#pragma deprecated Use CNavMesh.BuildPath() instead.
+native bool NavMesh_BuildPath(CNavArea startArea, CNavArea goalArea, const float goalPos[3], NavPathCostFunctor costFunctor, any costData=0, CNavArea &closestArea=INVALID_NAV_AREA, float maxPathLength=0.0, float flMaxStepSize=0.0);
+
+#pragma deprecated Use CNavArea.ID instead.
+native int NavMeshArea_GetID(int areaIndex);
+
+#pragma deprecated Use CNavArea.Attributes instead.
+native int NavMeshArea_GetFlags(int areaIndex);
+
+#pragma deprecated Use CNavArea.GetPlace() instead.
+native void NavMeshArea_GetPlace(int areaIndex, char[] buffer, int maxlen);
+
+#pragma deprecated Use CNavArea.GetCenter() instead.
+native bool NavMeshArea_GetCenter(int areaIndex, float buffer[3]);
+
+#pragma deprecated Use CNavArea.GetLadders() instead.
+native void NavMeshArea_GetLadderList(ArrayStack buffer, int areaIndex, int dir);
+
+#pragma deprecated Use CNavArea.GetHidingSpots() instead.
+native void NavMeshArea_GetHidingSpots(ArrayStack buffer, int areaIndex);
+
+#pragma deprecated Use CNavArea.GetClosestPointOnArea() instead.
+native void NavMeshArea_GetClosestPointOnArea(int areaIndex, const float pos[3], float closePos[3]);
+
+#pragma deprecated Use CNavArea.TotalCost instead.
+native int NavMeshArea_GetTotalCost(int areaIndex);
+
+#pragma deprecated Use CNavArea.CostSoFar instead.
+native int NavMeshArea_GetCostSoFar(int areaIndex);
+
+#pragma deprecated Use CNavArea.Parent instead.
+native int NavMeshArea_GetParent(int areaIndex);
+
+#pragma deprecated Use CNavArea.ParentHow instead.
+native int NavMeshArea_GetParentHow(int areaIndex);
+
+#pragma deprecated Use CNavArea.Parent instead.
+native void NavMeshArea_SetParent(int areaIndex, int parentAreaIndex);
+
+#pragma deprecated Use CNavArea.ParentHow instead.
+native void NavMeshArea_SetParentHow(int areaIndex, int parentHow);
+
+#pragma deprecated Use CNavArea.GetExtentLow() instead.
+native bool NavMeshArea_GetExtentLow(int areaIndex, float buffer[3]);
+
+#pragma deprecated Use CNavArea.GetExtentHigh() instead.
+native bool NavMeshArea_GetExtentHigh(int areaIndex, float buffer[3]);
+
+#pragma deprecated Use CNavArea.IsOverlappingPoint() instead.
+native bool NavMeshArea_IsOverlappingPoint(int areaIndex, const float pos[3], float tolerance);
+
+#pragma deprecated Use CNavArea.IsOverlappingArea() instead.
+native bool NavMeshArea_IsOverlappingArea(int areaIndex, int targetAreaIndex);
+
+#pragma deprecated Use CNavArea.NECornerZ instead.
+native float NavMeshArea_GetNECornerZ(int areaIndex);
+
+#pragma deprecated Use CNavArea.SWCornerZ instead.
+native float NavMeshArea_GetSWCornerZ(int areaIndex);
+
+#pragma deprecated Use CNavArea.GetCorner() instead.
+native void NavMeshArea_GetCorner(int areaIndex, NavCornerType corner, float buffer[3]);
+
+#pragma deprecated Use CNavArea.GetZ() instead.
+native float NavMeshArea_GetZ(int areaIndex, const float pos[3]);
+
+#pragma deprecated Use CNavArea.GetZFromXAndY() instead.
+native float NavMeshArea_GetZFromXAndY(int areaIndex, float x, float y);
+
+#pragma deprecated Use CNavArea.IsEdge() instead.
+native bool NavMeshArea_IsEdge(int areaIndex, int dir);
+
+#pragma deprecated Use CNavArea.Contains() instead.
+native bool NavMeshArea_Contains(int areaIndex, const float pos[3]);
+
+#pragma deprecated Use CNavArea.GetRandomPoint() instead.
+native void NavMeshArea_GetRandomPoint(int areaIndex, float buffer[3]);
+
+#pragma deprecated Use CNavArea.IsConnected() instead.
+native bool NavMeshArea_IsConnected(int areaIndex, int targetAreaIndex, int dir);
+
+#pragma deprecated Use CNavArea.ComputePortal() instead.
+native bool NavMeshArea_ComputePortal(int areaIndex, int areaToIndex, int dir, float center[3], float &halfWidth);
+
+#pragma deprecated Use CNavArea.ComputeClosestPointInPortal() instead.
+native bool NavMeshArea_ComputeClosestPointInPortal(int areaIndex, int areaToIndex, int dir, const float fromPos[3], float closePos[3]);
+
+#pragma deprecated Use CNavArea.ComputeDirection() instead.
+native int NavMeshArea_ComputeDirection(int areaIndex, const float pos[3]);
+
+#pragma deprecated Use CNavArea.GetLightIntensity() instead.
+native float NavMeshArea_GetLightIntensity(int areaIndex, const float pos[3]);
+
+#pragma deprecated Use CNavArea.GetAdjacentAreas() instead.
+native void NavMeshArea_GetAdjacentList(ArrayStack buffer, int areaIndex, int dir);
 
 public SharedPlugin __pl_navmesh = 
 {
