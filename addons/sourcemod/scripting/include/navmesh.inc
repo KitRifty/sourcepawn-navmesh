@@ -100,7 +100,7 @@ enum SearchSurroundingAreasFlags_t
  * 
  * @param success		true if sucessful, false otherwise.
  */
-forward Action OnNavMeshLoaded(bool success);
+forward void OnNavMeshLoaded(bool success);
 
 methodmap CNavMesh
 {
