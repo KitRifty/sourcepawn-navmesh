@@ -72,6 +72,8 @@ const CNavArea INVALID_NAV_AREA = view_as<CNavArea>(-1);
 const CNavLadder INVALID_NAV_LADDER = view_as<CNavLadder>(-1);
 const HidingSpot INVALID_NAV_HIDING_SPOT = view_as<HidingSpot>(-1);
 
+typedef NavAreaFunctor = function bool(CNavArea area, any data);
+
 typedef NavPathCostFunctor = function int(CNavArea area, CNavArea from, CNavLadder ladder, any data);
 
 typedef NavSearchSurroundingAreasFunctor = function bool(CNavArea area, CNavArea from, CNavLadder ladder, any data);
@@ -233,6 +235,26 @@ methodmap CNavMesh
 	 *	@param	maxDropDownLimit	Optional. Maximum negative height change allowed to next area. If 0.0, then no limit.
 	 */
 	public native void CollectSurroundingAreas(ArrayList areas, CNavArea startArea, SearchSurroundingAreasFlags_t options=SEARCHSURROUNDAREAS_NONE, float maxRange=1500.0, float maxStepSize=StepHeight, float maxDropDownLimit=100.0);
+
+	/**
+	 *	Iterate areas located in a radius around the given position.
+	 *
+	 *	@param	pos				The position to calculate from.
+	 *	@param	radius			Maximum distance of search from position.
+	 *	@param	functor			Callback function that is called for every area searched. If the functor returns false,
+	 *							search will stop.
+	 *	@param	functorData		Optional. User-defined data for functor.
+	 */
+	public native void ForAllAreasInRadius(const float pos[3], float radius, NavAreaFunctor functor, any functorData=0)
+
+	/**
+	 *	Collect areas located in a radius around the given position. This uses ForAllAreasInRadius() internally.
+	 *
+	 *	@param	pos			The position to calculate from.
+	 *	@param	radius		Maximum distance of search from position.
+	 *	@param	buffer		ArrayList that will receive the areas.
+	 */
+	public native void CollectAreasInRadius(const float pos[3], float radius, ArrayList buffer);
 
 	/**
 	 *	Find path from startArea to goalArea via an A* search, using supplied cost heuristic.

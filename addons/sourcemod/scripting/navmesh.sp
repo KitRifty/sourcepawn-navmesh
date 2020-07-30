@@ -6,7 +6,7 @@
 #include <profiler>
 #include <navmesh>
 
-#define PLUGIN_VERSION "1.0.7"
+#define PLUGIN_VERSION "1.0.7-dev"
 
 public Plugin myinfo = 
 {
@@ -80,8 +80,10 @@ enum
 	NavMeshArea_NextOpenIndex,
 	NavMeshArea_PathLengthSoFar,
 	
+	// Search markers.
 	NavMeshArea_NearSearchMarker,
-	
+	NavMeshArea_RadiusSearchMarker,
+
 	TFNavArea_AttributeFlags,
 
 	CSNavArea_ApproachInfoStartIndex,
@@ -275,6 +277,8 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("CNavMesh.GetRandomHidingSpot", Native_CNavMeshGetRandomHidingSpot);
 	CreateNative("CNavMesh.SearchSurroundingAreas", Native_CNavMeshSearchSurroundingAreas);
 	CreateNative("CNavMesh.CollectSurroundingAreas", Native_CNavMeshCollectSurroundingAreas);
+	CreateNative("CNavMesh.ForAllAreasInRadius", Native_CNavMeshForAllAreasInRadius);
+	CreateNative("CNavMesh.CollectAreasInRadius", Native_CNavMeshCollectAreasInRadius);
 	CreateNative("CNavMesh.BuildPath", Native_CNavMeshBuildPath);
 
 	CreateNative("NavMeshArea_GetMasterMarker", Native_NavMeshAreaGetMasterMarker);
@@ -337,8 +341,8 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("CNavArea.GetRandomPoint", Native_NavMeshAreaGetRandomPoint);
 	CreateNative("CNavArea.IsConnected", Native_NavMeshAreaIsConnected);
 	CreateNative("CNavArea.GetClosestPointOnArea", Native_NavMeshAreaGetClosestPointOnArea);
-	CreateNative("CNavArea.GetAdjacentAreas", Native_NavMeshAreaGetAdjacentAreas);
-	CreateNative("CNavArea.GetIncomingConnections", Native_NavMeshAreaGetIncomingConnections);
+	CreateNative("CNavArea.GetAdjacentAreas", Native_CNavAreaGetAdjacentAreas);
+	CreateNative("CNavArea.GetIncomingConnections", Native_CNavAreaGetIncomingConnections);
 	CreateNative("CNavArea.GetLadders", Native_CNavAreaGetLadders);
 	CreateNative("CNavArea.GetHidingSpots", Native_CNavAreaGetHidingSpots);
 	CreateNative("CNavArea.ComputePortal", Native_NavMeshAreaComputePortal);
@@ -587,6 +591,7 @@ void NavMeshSearchSurroundingAreas(int startAreaIndex, Handle filterFuncPlugin, 
 	delete connections;
 }
 
+// Deprecated.
 ArrayStack NavMeshCollectSurroundingAreas(int iStartAreaIndex, float flTravelDistanceLimit=1500.0, float flMaxStepUpLimit=StepHeight, float flMaxDropDownLimit=100.0)
 {
 	if (!g_bNavMeshBuilt || iStartAreaIndex == -1)
@@ -741,11 +746,7 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 		if (iAreaIndex == iGoalAreaIndex ||
 			(iGoalAreaIndex == -1 && NavMeshAreaContains(iAreaIndex, flGoalPos)))
 		{
-			if (iClosestAreaIndex != -1)
-			{
-				iClosestAreaIndex = iGoalAreaIndex;
-			}
-			
+			iClosestAreaIndex = iGoalAreaIndex;
 			return true;
 		}
 		
@@ -1353,396 +1354,396 @@ bool NavMeshLoad(const char[] sMapName)
 	if (iAreaCount == 0)
 	{
 		delete hFile;
+		LogError("Navigation mesh has no areas!");
+		NavMeshPostLoad(false);
 		return false;
 	}
 
-	if (iAreaCount > 0)
+	Profiler profiler = new Profiler();
+	profiler.Start();
+
+	// Ensure capacity to reduce some overhead.
+	g_hNavMeshAreas.Resize(iAreaCount);
+
+	for (int iAreaIndex = 0; iAreaIndex < iAreaCount; iAreaIndex++)
 	{
-		Profiler profiler = new Profiler();
-		profiler.Start();
+		g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_Parent);
+		g_hNavMeshAreas.Set(iAreaIndex, NUM_TRAVERSE_TYPES, NavMeshArea_ParentHow);
+		g_hNavMeshAreas.Set(iAreaIndex, 0, NavMeshArea_TotalCost);
+		g_hNavMeshAreas.Set(iAreaIndex, 0, NavMeshArea_CostSoFar);
+		g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_Marker);
+		g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_OpenMarker);
+		g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_PrevOpenIndex);
+		g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_NextOpenIndex);
+		g_hNavMeshAreas.Set(iAreaIndex, 0.0, NavMeshArea_PathLengthSoFar);
+		g_hNavMeshAreas.Set(iAreaIndex, false, NavMeshArea_Blocked);
+		g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_NearSearchMarker);
+		g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_RadiusSearchMarker);
+		g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_IncomingConnectionsStartIndex);
+		g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_IncomingConnectionsEndIndex);
 
-		// Ensure capacity to reduce some overhead.
-		g_hNavMeshAreas.Resize(iAreaCount);
+		int iAreaID = -1;
+		ReadFileCell(hFile, iAreaID, UNSIGNED_INT_BYTE_SIZE);
+		g_hNavMeshAreas.Set(iAreaIndex, iAreaID, NavMeshArea_ID);
 
-		for (int iAreaIndex = 0; iAreaIndex < iAreaCount; iAreaIndex++)
+		char szAreaID[16];
+		IntToString(iAreaID, szAreaID, 16);
+		g_hNavMeshAreaIdToIndexMap.SetValue(szAreaID, iAreaIndex);
+
+		// LogMessage("Area ID: %d [file pos %x]", iAreaID, hFile.Position);
+		
+		int iAreaFlags = 0;
+
+		if (iNavVersion <= 8) 
 		{
-			g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_Parent);
-			g_hNavMeshAreas.Set(iAreaIndex, NUM_TRAVERSE_TYPES, NavMeshArea_ParentHow);
-			g_hNavMeshAreas.Set(iAreaIndex, 0, NavMeshArea_TotalCost);
-			g_hNavMeshAreas.Set(iAreaIndex, 0, NavMeshArea_CostSoFar);
-			g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_Marker);
-			g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_OpenMarker);
-			g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_PrevOpenIndex);
-			g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_NextOpenIndex);
-			g_hNavMeshAreas.Set(iAreaIndex, 0.0, NavMeshArea_PathLengthSoFar);
-			g_hNavMeshAreas.Set(iAreaIndex, false, NavMeshArea_Blocked);
-			g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_NearSearchMarker);
-			g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_IncomingConnectionsStartIndex);
-			g_hNavMeshAreas.Set(iAreaIndex, -1, NavMeshArea_IncomingConnectionsEndIndex);
+			ReadFileCell(hFile, iAreaFlags, UNSIGNED_CHAR_BYTE_SIZE);
+		}
+		else if (iNavVersion < 13) 
+		{
+			ReadFileCell(hFile, iAreaFlags, UNSIGNED_SHORT_BYTE_SIZE);
+		}
+		else 
+		{
+			ReadFileCell(hFile, iAreaFlags, UNSIGNED_INT_BYTE_SIZE);
+		}
+		
+		g_hNavMeshAreas.Set(iAreaIndex, iAreaFlags, NavMeshArea_Flags);
 
-			int iAreaID = -1;
-			ReadFileCell(hFile, iAreaID, UNSIGNED_INT_BYTE_SIZE);
-			g_hNavMeshAreas.Set(iAreaIndex, iAreaID, NavMeshArea_ID);
+		// LogMessage("Area Flags: %d", iAreaFlags);
+		
+		float x1; float y1; float z1;
+		ReadFileCell(hFile, view_as<int>(x1), FLOAT_BYTE_SIZE);
+		ReadFileCell(hFile, view_as<int>(y1), FLOAT_BYTE_SIZE);
+		ReadFileCell(hFile, view_as<int>(z1), FLOAT_BYTE_SIZE);
+		
+		g_hNavMeshAreas.Set(iAreaIndex, x1, NavMeshArea_X1);
+		g_hNavMeshAreas.Set(iAreaIndex, y1, NavMeshArea_Y1);
+		g_hNavMeshAreas.Set(iAreaIndex, z1, NavMeshArea_Z1);
 
-			char szAreaID[16];
-			IntToString(iAreaID, szAreaID, 16);
-			g_hNavMeshAreaIdToIndexMap.SetValue(szAreaID, iAreaIndex);
+		float x2; float y2; float z2;
+		ReadFileCell(hFile, view_as<int>(x2), FLOAT_BYTE_SIZE);
+		ReadFileCell(hFile, view_as<int>(y2), FLOAT_BYTE_SIZE);
+		ReadFileCell(hFile, view_as<int>(z2), FLOAT_BYTE_SIZE);
 
-			// LogMessage("Area ID: %d [file pos %x]", iAreaID, hFile.Position);
+		g_hNavMeshAreas.Set(iAreaIndex, x2, NavMeshArea_X2);
+		g_hNavMeshAreas.Set(iAreaIndex, y2, NavMeshArea_Y2);
+		g_hNavMeshAreas.Set(iAreaIndex, z2, NavMeshArea_Z2);
+
+		// LogMessage("Area extent: (%f, %f, %f), (%f, %f, %f)", x1, y1, z1, x2, y2, z2);
+		
+		g_flNavMeshExtentLow[0] = (iAreaIndex == 0 || x1 < g_flNavMeshExtentLow[0]) ? x1 : g_flNavMeshExtentLow[0];
+		g_flNavMeshExtentLow[1] = (iAreaIndex == 0 || y1 < g_flNavMeshExtentLow[1]) ? y1 : g_flNavMeshExtentLow[1];
+		g_flNavMeshExtentHigh[0] = (iAreaIndex == 0 || x2 > g_flNavMeshExtentHigh[0]) ? x2 : g_flNavMeshExtentHigh[0];
+		g_flNavMeshExtentHigh[1] = (iAreaIndex == 0 || y2 > g_flNavMeshExtentHigh[1]) ? y2 : g_flNavMeshExtentHigh[1];
+
+		// Cache the center position.
+		float flAreaCenter[3];
+		flAreaCenter[0] = (x1 + x2) / 2.0;
+		flAreaCenter[1] = (y1 + y2) / 2.0;
+		flAreaCenter[2] = (z1 + z2) / 2.0;
+		
+		g_hNavMeshAreas.Set(iAreaIndex, flAreaCenter[0], NavMeshArea_CenterX);
+		g_hNavMeshAreas.Set(iAreaIndex, flAreaCenter[1], NavMeshArea_CenterY);
+		g_hNavMeshAreas.Set(iAreaIndex, flAreaCenter[2], NavMeshArea_CenterZ);
+
+		float flInvDxCorners = 0.0; 
+		float flInvDyCorners = 0.0;
+		
+		if ((x2 - x1) > 0.0 && (y2 - y1) > 0.0)
+		{
+			flInvDxCorners = 1.0 / (x2 - x1);
+			flInvDyCorners = 1.0 / (y2 - y1);
+		}
+		
+		g_hNavMeshAreas.Set(iAreaIndex, flInvDxCorners, NavMeshArea_InvDxCorners);
+		g_hNavMeshAreas.Set(iAreaIndex, flInvDyCorners, NavMeshArea_InvDyCorners);
+
+		float flNECornerZ = 0.0;
+		float flSWCornerZ = 0.0;
+		ReadFileCell(hFile, view_as<int>(flNECornerZ), FLOAT_BYTE_SIZE);
+		ReadFileCell(hFile, view_as<int>(flSWCornerZ), FLOAT_BYTE_SIZE);
+
+		g_hNavMeshAreas.Set(iAreaIndex, flNECornerZ, NavMeshArea_NECornerZ);
+		g_hNavMeshAreas.Set(iAreaIndex, flSWCornerZ, NavMeshArea_SWCornerZ);
+
+		//LogMessage("Corners: NW(%f), SW(%f)", flNECornerZ, flSWCornerZ);
+		
+		int iConnectionsStartIndex = -1;
+		int iConnectionsEndIndex = -1;
+		
+		// Find connections.
+		for (int iDirection = 0; iDirection < NAV_DIR_COUNT; iDirection++)
+		{
+			int iConnectionCount = 0;
+			ReadFileCell(hFile, iConnectionCount, UNSIGNED_INT_BYTE_SIZE);
 			
-			int iAreaFlags = 0;
-
-			if (iNavVersion <= 8) 
+			//LogMessage("Connection count: %d", iConnectionCount);
+			
+			if (iConnectionCount > 0)
 			{
-				ReadFileCell(hFile, iAreaFlags, UNSIGNED_CHAR_BYTE_SIZE);
-			}
-			else if (iNavVersion < 13) 
-			{
-				ReadFileCell(hFile, iAreaFlags, UNSIGNED_SHORT_BYTE_SIZE);
-			}
-			else 
-			{
-				ReadFileCell(hFile, iAreaFlags, UNSIGNED_INT_BYTE_SIZE);
-			}
+				if (iConnectionsStartIndex == -1) iConnectionsStartIndex = g_AreaConnectionsListStartIndex;
 			
-			g_hNavMeshAreas.Set(iAreaIndex, iAreaFlags, NavMeshArea_Flags);
-
-			// LogMessage("Area Flags: %d", iAreaFlags);
-			
-			float x1; float y1; float z1;
-			ReadFileCell(hFile, view_as<int>(x1), FLOAT_BYTE_SIZE);
-			ReadFileCell(hFile, view_as<int>(y1), FLOAT_BYTE_SIZE);
-			ReadFileCell(hFile, view_as<int>(z1), FLOAT_BYTE_SIZE);
-			
-			g_hNavMeshAreas.Set(iAreaIndex, x1, NavMeshArea_X1);
-			g_hNavMeshAreas.Set(iAreaIndex, y1, NavMeshArea_Y1);
-			g_hNavMeshAreas.Set(iAreaIndex, z1, NavMeshArea_Z1);
-
-			float x2; float y2; float z2;
-			ReadFileCell(hFile, view_as<int>(x2), FLOAT_BYTE_SIZE);
-			ReadFileCell(hFile, view_as<int>(y2), FLOAT_BYTE_SIZE);
-			ReadFileCell(hFile, view_as<int>(z2), FLOAT_BYTE_SIZE);
-
-			g_hNavMeshAreas.Set(iAreaIndex, x2, NavMeshArea_X2);
-			g_hNavMeshAreas.Set(iAreaIndex, y2, NavMeshArea_Y2);
-			g_hNavMeshAreas.Set(iAreaIndex, z2, NavMeshArea_Z2);
-
-			// LogMessage("Area extent: (%f, %f, %f), (%f, %f, %f)", x1, y1, z1, x2, y2, z2);
-			
-			g_flNavMeshExtentLow[0] = (iAreaIndex == 0 || x1 < g_flNavMeshExtentLow[0]) ? x1 : g_flNavMeshExtentLow[0];
-			g_flNavMeshExtentLow[1] = (iAreaIndex == 0 || y1 < g_flNavMeshExtentLow[1]) ? y1 : g_flNavMeshExtentLow[1];
-			g_flNavMeshExtentHigh[0] = (iAreaIndex == 0 || x2 > g_flNavMeshExtentHigh[0]) ? x2 : g_flNavMeshExtentHigh[0];
-			g_flNavMeshExtentHigh[1] = (iAreaIndex == 0 || y2 > g_flNavMeshExtentHigh[1]) ? y2 : g_flNavMeshExtentHigh[1];
-
-			// Cache the center position.
-			float flAreaCenter[3];
-			flAreaCenter[0] = (x1 + x2) / 2.0;
-			flAreaCenter[1] = (y1 + y2) / 2.0;
-			flAreaCenter[2] = (z1 + z2) / 2.0;
-			
-			g_hNavMeshAreas.Set(iAreaIndex, flAreaCenter[0], NavMeshArea_CenterX);
-			g_hNavMeshAreas.Set(iAreaIndex, flAreaCenter[1], NavMeshArea_CenterY);
-			g_hNavMeshAreas.Set(iAreaIndex, flAreaCenter[2], NavMeshArea_CenterZ);
-
-			float flInvDxCorners = 0.0; 
-			float flInvDyCorners = 0.0;
-			
-			if ((x2 - x1) > 0.0 && (y2 - y1) > 0.0)
-			{
-				flInvDxCorners = 1.0 / (x2 - x1);
-				flInvDyCorners = 1.0 / (y2 - y1);
-			}
-			
-			g_hNavMeshAreas.Set(iAreaIndex, flInvDxCorners, NavMeshArea_InvDxCorners);
-			g_hNavMeshAreas.Set(iAreaIndex, flInvDyCorners, NavMeshArea_InvDyCorners);
-
-			float flNECornerZ = 0.0;
-			float flSWCornerZ = 0.0;
-			ReadFileCell(hFile, view_as<int>(flNECornerZ), FLOAT_BYTE_SIZE);
-			ReadFileCell(hFile, view_as<int>(flSWCornerZ), FLOAT_BYTE_SIZE);
-
-			g_hNavMeshAreas.Set(iAreaIndex, flNECornerZ, NavMeshArea_NECornerZ);
-			g_hNavMeshAreas.Set(iAreaIndex, flSWCornerZ, NavMeshArea_SWCornerZ);
-
-			//LogMessage("Corners: NW(%f), SW(%f)", flNECornerZ, flSWCornerZ);
-			
-			int iConnectionsStartIndex = -1;
-			int iConnectionsEndIndex = -1;
-			
-			// Find connections.
-			for (int iDirection = 0; iDirection < NAV_DIR_COUNT; iDirection++)
-			{
-				int iConnectionCount = 0;
-				ReadFileCell(hFile, iConnectionCount, UNSIGNED_INT_BYTE_SIZE);
-				
-				//LogMessage("Connection count: %d", iConnectionCount);
-				
-				if (iConnectionCount > 0)
+				for (int i = 0; i < iConnectionCount; i++) 
 				{
-					if (iConnectionsStartIndex == -1) iConnectionsStartIndex = g_AreaConnectionsListStartIndex;
+					int iConnectingAreaID = 0;
+					ReadFileCell(hFile, iConnectingAreaID, UNSIGNED_INT_BYTE_SIZE);
+					
+					int iConnectionIndex = g_hNavMeshAreaConnections.Push(iConnectingAreaID);
+					g_hNavMeshAreaConnections.Set(iConnectionIndex, iDirection, NavMeshConnection_Direction);
+					g_hNavMeshAreaConnections.Set(iConnectionIndex, iAreaIndex, NavMeshConnection_FromAreaIndex);
+
+					iConnectionsEndIndex = g_AreaConnectionsListStartIndex++;
+				}
+			}
+		}
+		
+		g_hNavMeshAreas.Set(iAreaIndex, iConnectionsStartIndex, NavMeshArea_ConnectionsStartIndex);
+		g_hNavMeshAreas.Set(iAreaIndex, iConnectionsEndIndex, NavMeshArea_ConnectionsEndIndex);
+
+		// Get hiding spots.
+		int iHidingSpotCount = 0;
+		ReadFileCell(hFile, iHidingSpotCount, UNSIGNED_CHAR_BYTE_SIZE);
+		
+		//LogMessage("Hiding spot count: %d", iHidingSpotCount);
+
+		int iHidingSpotsStartIndex = -1;
+		int iHidingSpotsEndIndex = -1;
+		
+		if (iHidingSpotCount > 0)
+		{
+			iHidingSpotsStartIndex = g_AreaHidingSpotsListStartIndex;
+			
+			for (int iHidingSpotIndex = 0; iHidingSpotIndex < iHidingSpotCount; iHidingSpotIndex++)
+			{
+				NavMeshLoadHidingSpot(hFile, iAreaIndex);
+				iHidingSpotsEndIndex = g_AreaHidingSpotsListStartIndex++;
+			}
+		}
+		
+		g_hNavMeshAreas.Set(iAreaIndex, iHidingSpotsStartIndex, NavMeshArea_HidingSpotsStartIndex);
+		g_hNavMeshAreas.Set(iAreaIndex, iHidingSpotsEndIndex, NavMeshArea_HidingSpotsEndIndex);
+
+		// Get approach areas (old version, only used to read data)
+		if (iNavVersion < 15)
+		{
+			int iApproachAreaCount = 0;
+			ReadFileCell(hFile, iApproachAreaCount, UNSIGNED_CHAR_BYTE_SIZE);
+			
+			for (int iApproachAreaIndex = 0; iApproachAreaIndex < iApproachAreaCount; iApproachAreaIndex++)
+			{
+				int iApproachHereID;
+				ReadFileCell(hFile, iApproachHereID, UNSIGNED_INT_BYTE_SIZE);
 				
-					for (int i = 0; i < iConnectionCount; i++) 
+				int iApproachPrevID;
+				ReadFileCell(hFile, iApproachPrevID, UNSIGNED_INT_BYTE_SIZE);
+				
+				int iApproachType;
+				ReadFileCell(hFile, iApproachType, UNSIGNED_CHAR_BYTE_SIZE);
+				
+				int iApproachNextID;
+				ReadFileCell(hFile, iApproachNextID, UNSIGNED_INT_BYTE_SIZE);
+				
+				int iApproachHow;
+				ReadFileCell(hFile, iApproachHow, UNSIGNED_CHAR_BYTE_SIZE);
+			}
+		}
+		
+		// Get encounter paths.
+		int iEncounterPathCount;
+		ReadFileCell(hFile, iEncounterPathCount, UNSIGNED_INT_BYTE_SIZE);
+		
+		// LogMessage("Encounter Path Count: %d", iEncounterPathCount);
+		
+		int iEncounterPathsStartIndex = -1;
+		int iEncounterPathsEndIndex = -1;
+		
+		if (iEncounterPathCount > 0)
+		{
+			iEncounterPathsStartIndex = g_AreaEncounterPathsListStartIndex;
+		
+			for (int h = 0; h < iEncounterPathCount; h++)
+			{
+				int iEncounterFromID;
+				ReadFileCell(hFile, iEncounterFromID, UNSIGNED_INT_BYTE_SIZE);
+				
+				int iEncounterFromDirection;
+				ReadFileCell(hFile, iEncounterFromDirection, UNSIGNED_CHAR_BYTE_SIZE);
+				
+				int iEncounterToID;
+				ReadFileCell(hFile, iEncounterToID, UNSIGNED_INT_BYTE_SIZE);
+				
+				int iEncounterToDirection;
+				ReadFileCell(hFile, iEncounterToDirection, UNSIGNED_CHAR_BYTE_SIZE);
+				
+				int iEncounterSpotCount;
+				ReadFileCell(hFile, iEncounterSpotCount, UNSIGNED_CHAR_BYTE_SIZE);
+				
+				//LogMessage("Encounter [from ID %d] [from dir %d] [to ID %d] [to dir %d] [spot count %d]", iEncounterFromID, iEncounterFromDirection, iEncounterToID, iEncounterToDirection, iEncounterSpotCount);
+				
+				int iEncounterSpotsStartIndex = -1;
+				int iEncounterSpotsEndIndex = -1;
+				
+				if (iEncounterSpotCount > 0)
+				{
+					iEncounterSpotsStartIndex = g_AreaEncounterSpotsListStartIndex;
+				
+					for (int i = 0; i < iEncounterSpotCount; i++)
 					{
-						int iConnectingAreaID = 0;
-						ReadFileCell(hFile, iConnectingAreaID, UNSIGNED_INT_BYTE_SIZE);
+						int iEncounterSpotOrderID;
+						ReadFileCell(hFile, iEncounterSpotOrderID, UNSIGNED_INT_BYTE_SIZE);
 						
-						int iConnectionIndex = g_hNavMeshAreaConnections.Push(iConnectingAreaID);
-						g_hNavMeshAreaConnections.Set(iConnectionIndex, iDirection, NavMeshConnection_Direction);
-						g_hNavMeshAreaConnections.Set(iConnectionIndex, iAreaIndex, NavMeshConnection_FromAreaIndex);
-
-						iConnectionsEndIndex = g_AreaConnectionsListStartIndex++;
-					}
-				}
-			}
-			
-			g_hNavMeshAreas.Set(iAreaIndex, iConnectionsStartIndex, NavMeshArea_ConnectionsStartIndex);
-			g_hNavMeshAreas.Set(iAreaIndex, iConnectionsEndIndex, NavMeshArea_ConnectionsEndIndex);
-
-			// Get hiding spots.
-			int iHidingSpotCount = 0;
-			ReadFileCell(hFile, iHidingSpotCount, UNSIGNED_CHAR_BYTE_SIZE);
-			
-			//LogMessage("Hiding spot count: %d", iHidingSpotCount);
-
-			int iHidingSpotsStartIndex = -1;
-			int iHidingSpotsEndIndex = -1;
-			
-			if (iHidingSpotCount > 0)
-			{
-				iHidingSpotsStartIndex = g_AreaHidingSpotsListStartIndex;
-				
-				for (int iHidingSpotIndex = 0; iHidingSpotIndex < iHidingSpotCount; iHidingSpotIndex++)
-				{
-					NavMeshLoadHidingSpot(hFile, iAreaIndex);
-					iHidingSpotsEndIndex = g_AreaHidingSpotsListStartIndex++;
-				}
-			}
-			
-			g_hNavMeshAreas.Set(iAreaIndex, iHidingSpotsStartIndex, NavMeshArea_HidingSpotsStartIndex);
-			g_hNavMeshAreas.Set(iAreaIndex, iHidingSpotsEndIndex, NavMeshArea_HidingSpotsEndIndex);
-
-			// Get approach areas (old version, only used to read data)
-			if (iNavVersion < 15)
-			{
-				int iApproachAreaCount = 0;
-				ReadFileCell(hFile, iApproachAreaCount, UNSIGNED_CHAR_BYTE_SIZE);
-				
-				for (int iApproachAreaIndex = 0; iApproachAreaIndex < iApproachAreaCount; iApproachAreaIndex++)
-				{
-					int iApproachHereID;
-					ReadFileCell(hFile, iApproachHereID, UNSIGNED_INT_BYTE_SIZE);
-					
-					int iApproachPrevID;
-					ReadFileCell(hFile, iApproachPrevID, UNSIGNED_INT_BYTE_SIZE);
-					
-					int iApproachType;
-					ReadFileCell(hFile, iApproachType, UNSIGNED_CHAR_BYTE_SIZE);
-					
-					int iApproachNextID;
-					ReadFileCell(hFile, iApproachNextID, UNSIGNED_INT_BYTE_SIZE);
-					
-					int iApproachHow;
-					ReadFileCell(hFile, iApproachHow, UNSIGNED_CHAR_BYTE_SIZE);
-				}
-			}
-			
-			// Get encounter paths.
-			int iEncounterPathCount;
-			ReadFileCell(hFile, iEncounterPathCount, UNSIGNED_INT_BYTE_SIZE);
-			
-			// LogMessage("Encounter Path Count: %d", iEncounterPathCount);
-			
-			int iEncounterPathsStartIndex = -1;
-			int iEncounterPathsEndIndex = -1;
-			
-			if (iEncounterPathCount > 0)
-			{
-				iEncounterPathsStartIndex = g_AreaEncounterPathsListStartIndex;
-			
-				for (int h = 0; h < iEncounterPathCount; h++)
-				{
-					int iEncounterFromID;
-					ReadFileCell(hFile, iEncounterFromID, UNSIGNED_INT_BYTE_SIZE);
-					
-					int iEncounterFromDirection;
-					ReadFileCell(hFile, iEncounterFromDirection, UNSIGNED_CHAR_BYTE_SIZE);
-					
-					int iEncounterToID;
-					ReadFileCell(hFile, iEncounterToID, UNSIGNED_INT_BYTE_SIZE);
-					
-					int iEncounterToDirection;
-					ReadFileCell(hFile, iEncounterToDirection, UNSIGNED_CHAR_BYTE_SIZE);
-					
-					int iEncounterSpotCount;
-					ReadFileCell(hFile, iEncounterSpotCount, UNSIGNED_CHAR_BYTE_SIZE);
-					
-					//LogMessage("Encounter [from ID %d] [from dir %d] [to ID %d] [to dir %d] [spot count %d]", iEncounterFromID, iEncounterFromDirection, iEncounterToID, iEncounterToDirection, iEncounterSpotCount);
-					
-					int iEncounterSpotsStartIndex = -1;
-					int iEncounterSpotsEndIndex = -1;
-					
-					if (iEncounterSpotCount > 0)
-					{
-						iEncounterSpotsStartIndex = g_AreaEncounterSpotsListStartIndex;
-					
-						for (int i = 0; i < iEncounterSpotCount; i++)
-						{
-							int iEncounterSpotOrderID;
-							ReadFileCell(hFile, iEncounterSpotOrderID, UNSIGNED_INT_BYTE_SIZE);
-							
-							int iEncounterSpotT;
-							ReadFileCell(hFile, iEncounterSpotT, UNSIGNED_CHAR_BYTE_SIZE);
-							
-							float flEncounterSpotParametricDistance = float(iEncounterSpotT) / 255.0;
-							
-							int iEncounterSpotIndex = g_hNavMeshAreaEncounterSpots.Push(iEncounterSpotOrderID);
-							g_hNavMeshAreaEncounterSpots.Set(iEncounterSpotIndex, flEncounterSpotParametricDistance, NavMeshEncounterSpot_ParametricDistance);
-							
-							iEncounterSpotsEndIndex = g_AreaEncounterSpotsListStartIndex++;
-							
-							//LogMessage("Encounter spot [order id %d] and [T %d]", iEncounterSpotOrderID, iEncounterSpotT);
-						}
-					}
-					
-					int iEncounterPathIndex = g_hNavMeshAreaEncounterPaths.Push(iEncounterFromID);
-					g_hNavMeshAreaEncounterPaths.Set(iEncounterPathIndex, iEncounterFromDirection, NavMeshEncounterPath_FromDirection);
-					g_hNavMeshAreaEncounterPaths.Set(iEncounterPathIndex, iEncounterToID, NavMeshEncounterPath_ToAreaIndex);
-					g_hNavMeshAreaEncounterPaths.Set(iEncounterPathIndex, iEncounterToDirection, NavMeshEncounterPath_ToDirection);
-					g_hNavMeshAreaEncounterPaths.Set(iEncounterPathIndex, iEncounterSpotsStartIndex, NavMeshEncounterPath_SpotsStartIndex);
-					g_hNavMeshAreaEncounterPaths.Set(iEncounterPathIndex, iEncounterSpotsEndIndex, NavMeshEncounterPath_SpotsEndIndex);
-					
-					iEncounterPathsEndIndex = g_AreaEncounterPathsListStartIndex++;
-				}
-			}
-			
-			g_hNavMeshAreas.Set(iAreaIndex, iEncounterPathsStartIndex, NavMeshArea_EncounterPathsStartIndex);
-			g_hNavMeshAreas.Set(iAreaIndex, iEncounterPathsEndIndex, NavMeshArea_EncounterPathsEndIndex);
-
-			int iPlaceID = -1;
-			ReadFileCell(hFile, iPlaceID, UNSIGNED_SHORT_BYTE_SIZE);
-			g_hNavMeshAreas.Set(iAreaIndex, iPlaceID, NavMeshArea_PlaceID);
-
-			// LogMessage("Place ID: %d", iPlaceID);
-			
-			// Get ladder connections.
-			
-			int iLadderConnectionsStartIndex = -1;
-			int iLadderConnectionsEndIndex = -1;
-			
-			for (int iLadderDirection = 0; iLadderDirection < NAV_LADDER_DIR_COUNT; iLadderDirection++)
-			{
-				int iLadderConnectionCount;
-				ReadFileCell(hFile, iLadderConnectionCount, UNSIGNED_INT_BYTE_SIZE);
-				
-				//LogMessage("Ladder Connection Count: %d", iLadderConnectionCount);
-				
-				if (iLadderConnectionCount > 0)
-				{
-					iLadderConnectionsStartIndex = g_AreaLadderConnectionsListStartIndex;
-				
-					for (int i = 0; i < iLadderConnectionCount; i++)
-					{
-						int iLadderConnectionID;
-						ReadFileCell(hFile, iLadderConnectionID, UNSIGNED_INT_BYTE_SIZE);
+						int iEncounterSpotT;
+						ReadFileCell(hFile, iEncounterSpotT, UNSIGNED_CHAR_BYTE_SIZE);
 						
-						int iLadderConnectionIndex = g_hNavMeshAreaLadderConnections.Push(iLadderConnectionID);
-						g_hNavMeshAreaLadderConnections.Set(iLadderConnectionIndex, iLadderDirection, NavMeshLadderConnection_Direction);
-
-						iLadderConnectionsEndIndex = g_AreaLadderConnectionsListStartIndex++;
-
-						//LogMessage("Parsed ladder connect [ID %d]\n", iLadderConnectionID);
+						float flEncounterSpotParametricDistance = float(iEncounterSpotT) / 255.0;
+						
+						int iEncounterSpotIndex = g_hNavMeshAreaEncounterSpots.Push(iEncounterSpotOrderID);
+						g_hNavMeshAreaEncounterSpots.Set(iEncounterSpotIndex, flEncounterSpotParametricDistance, NavMeshEncounterSpot_ParametricDistance);
+						
+						iEncounterSpotsEndIndex = g_AreaEncounterSpotsListStartIndex++;
+						
+						//LogMessage("Encounter spot [order id %d] and [T %d]", iEncounterSpotOrderID, iEncounterSpotT);
 					}
 				}
-			}
-
-			g_hNavMeshAreas.Set(iAreaIndex, iLadderConnectionsStartIndex, NavMeshArea_LadderConnectionsStartIndex);
-			g_hNavMeshAreas.Set(iAreaIndex, iLadderConnectionsEndIndex, NavMeshArea_LadderConnectionsEndIndex);
-			
-			float flEarliestOccupyTimeFirstTeam = 0.0;
-			float flEarliestOccupyTimeSecondTeam = 0.0;
-			ReadFileCell(hFile, view_as<int>(flEarliestOccupyTimeFirstTeam), FLOAT_BYTE_SIZE);
-			ReadFileCell(hFile, view_as<int>(flEarliestOccupyTimeSecondTeam), FLOAT_BYTE_SIZE);
-			
-			g_hNavMeshAreas.Set(iAreaIndex, flEarliestOccupyTimeFirstTeam, NavMeshArea_EarliestOccupyTimeFirstTeam);
-			g_hNavMeshAreas.Set(iAreaIndex, flEarliestOccupyTimeSecondTeam, NavMeshArea_EarliestOccupyTimeSecondTeam);
-
-			float flNavCornerLightIntensityNW = 0.0;
-			float flNavCornerLightIntensityNE = 0.0;
-			float flNavCornerLightIntensitySE = 0.0;
-			float flNavCornerLightIntensitySW = 0.0;
-			
-			int iVisibleAreasStartIndex = -1;
-			int iVisibleAreasEndIndex = -1;
-			
-			int iInheritVisibilityFrom = -1;
-
-			if (iNavVersion >= 11)
-			{
-				ReadFileCell(hFile, view_as<int>(flNavCornerLightIntensityNW), FLOAT_BYTE_SIZE);
-				ReadFileCell(hFile, view_as<int>(flNavCornerLightIntensityNE), FLOAT_BYTE_SIZE);
-				ReadFileCell(hFile, view_as<int>(flNavCornerLightIntensitySE), FLOAT_BYTE_SIZE);
-				ReadFileCell(hFile, view_as<int>(flNavCornerLightIntensitySW), FLOAT_BYTE_SIZE);
 				
-				if (iNavVersion >= 16)
+				int iEncounterPathIndex = g_hNavMeshAreaEncounterPaths.Push(iEncounterFromID);
+				g_hNavMeshAreaEncounterPaths.Set(iEncounterPathIndex, iEncounterFromDirection, NavMeshEncounterPath_FromDirection);
+				g_hNavMeshAreaEncounterPaths.Set(iEncounterPathIndex, iEncounterToID, NavMeshEncounterPath_ToAreaIndex);
+				g_hNavMeshAreaEncounterPaths.Set(iEncounterPathIndex, iEncounterToDirection, NavMeshEncounterPath_ToDirection);
+				g_hNavMeshAreaEncounterPaths.Set(iEncounterPathIndex, iEncounterSpotsStartIndex, NavMeshEncounterPath_SpotsStartIndex);
+				g_hNavMeshAreaEncounterPaths.Set(iEncounterPathIndex, iEncounterSpotsEndIndex, NavMeshEncounterPath_SpotsEndIndex);
+				
+				iEncounterPathsEndIndex = g_AreaEncounterPathsListStartIndex++;
+			}
+		}
+		
+		g_hNavMeshAreas.Set(iAreaIndex, iEncounterPathsStartIndex, NavMeshArea_EncounterPathsStartIndex);
+		g_hNavMeshAreas.Set(iAreaIndex, iEncounterPathsEndIndex, NavMeshArea_EncounterPathsEndIndex);
+
+		int iPlaceID = -1;
+		ReadFileCell(hFile, iPlaceID, UNSIGNED_SHORT_BYTE_SIZE);
+		g_hNavMeshAreas.Set(iAreaIndex, iPlaceID, NavMeshArea_PlaceID);
+
+		// LogMessage("Place ID: %d", iPlaceID);
+		
+		// Get ladder connections.
+		
+		int iLadderConnectionsStartIndex = -1;
+		int iLadderConnectionsEndIndex = -1;
+		
+		for (int iLadderDirection = 0; iLadderDirection < NAV_LADDER_DIR_COUNT; iLadderDirection++)
+		{
+			int iLadderConnectionCount;
+			ReadFileCell(hFile, iLadderConnectionCount, UNSIGNED_INT_BYTE_SIZE);
+			
+			//LogMessage("Ladder Connection Count: %d", iLadderConnectionCount);
+			
+			if (iLadderConnectionCount > 0)
+			{
+				iLadderConnectionsStartIndex = g_AreaLadderConnectionsListStartIndex;
+			
+				for (int i = 0; i < iLadderConnectionCount; i++)
 				{
-					switch (GetEngineVersion())
-					{
-						case Engine_Left4Dead2:
-						{
-							// L4D2 inserts its own custom data before visible area set.
-						}
-						default:
-						{
-							int iVisibleAreaCount = 0;
-							ReadFileCell(hFile, iVisibleAreaCount, UNSIGNED_INT_BYTE_SIZE);
-							
-							// LogMessage("Visible area count: %d", iVisibleAreaCount);
-							
-							if (iVisibleAreaCount > 0)
-							{
-								iVisibleAreasStartIndex = g_hNavMeshAreaVisibleAreas.Length;
-							
-								for (int i = 0; i < iVisibleAreaCount; i++)
-								{
-									AreaBindInfo bindInfo;
-									ReadFileCell(hFile, bindInfo.AreaIndex, UNSIGNED_INT_BYTE_SIZE);
-									ReadFileCell(hFile, bindInfo.Attributes, UNSIGNED_CHAR_BYTE_SIZE);
-									g_hNavMeshAreaVisibleAreas.PushArray(bindInfo, sizeof(bindInfo));
+					int iLadderConnectionID;
+					ReadFileCell(hFile, iLadderConnectionID, UNSIGNED_INT_BYTE_SIZE);
+					
+					int iLadderConnectionIndex = g_hNavMeshAreaLadderConnections.Push(iLadderConnectionID);
+					g_hNavMeshAreaLadderConnections.Set(iLadderConnectionIndex, iLadderDirection, NavMeshLadderConnection_Direction);
 
-									iVisibleAreasEndIndex = g_AreaVisibleAreasListStartIndex++;
+					iLadderConnectionsEndIndex = g_AreaLadderConnectionsListStartIndex++;
 
-									//LogMessage("Parsed visible area [%d] with attr [%d]", iVisibleAreaID, iVisibleAreaAttributes);
-								}
-
-								iVisibleAreasEndIndex = g_hNavMeshAreaVisibleAreas.Length - 1;
-							}
-							
-							ReadFileCell(hFile, iInheritVisibilityFrom, UNSIGNED_INT_BYTE_SIZE);
-							
-							// LogMessage("Inherit visibilty from: %d", iInheritVisibilityFrom);
-						}
-					}
+					//LogMessage("Parsed ladder connect [ID %d]\n", iLadderConnectionID);
 				}
 			}
-
-			g_hNavMeshAreas.Set(iAreaIndex, flNavCornerLightIntensityNW, NavMeshArea_CornerLightIntensityNW);
-			g_hNavMeshAreas.Set(iAreaIndex, flNavCornerLightIntensityNE, NavMeshArea_CornerLightIntensityNE);
-			g_hNavMeshAreas.Set(iAreaIndex, flNavCornerLightIntensitySE, NavMeshArea_CornerLightIntensitySE);
-			g_hNavMeshAreas.Set(iAreaIndex, flNavCornerLightIntensitySW, NavMeshArea_CornerLightIntensitySW);
-
-			g_hNavMeshAreas.Set(iAreaIndex, iVisibleAreasStartIndex, NavMeshArea_VisibleAreasStartIndex);
-			g_hNavMeshAreas.Set(iAreaIndex, iVisibleAreasEndIndex, NavMeshArea_VisibleAreasEndIndex);
-
-			g_hNavMeshAreas.Set(iAreaIndex, iInheritVisibilityFrom, NavMeshArea_InheritVisibilityFrom);
-
-			NavMeshLoadAreaCustomData(hFile, iAreaIndex, iNavVersion, iNavSubVersion);
 		}
 
-		profiler.Stop();
-		LogMessage("Parsed %d areas in %f seconds.", iAreaCount, profiler.Time);
+		g_hNavMeshAreas.Set(iAreaIndex, iLadderConnectionsStartIndex, NavMeshArea_LadderConnectionsStartIndex);
+		g_hNavMeshAreas.Set(iAreaIndex, iLadderConnectionsEndIndex, NavMeshArea_LadderConnectionsEndIndex);
+		
+		float flEarliestOccupyTimeFirstTeam = 0.0;
+		float flEarliestOccupyTimeSecondTeam = 0.0;
+		ReadFileCell(hFile, view_as<int>(flEarliestOccupyTimeFirstTeam), FLOAT_BYTE_SIZE);
+		ReadFileCell(hFile, view_as<int>(flEarliestOccupyTimeSecondTeam), FLOAT_BYTE_SIZE);
+		
+		g_hNavMeshAreas.Set(iAreaIndex, flEarliestOccupyTimeFirstTeam, NavMeshArea_EarliestOccupyTimeFirstTeam);
+		g_hNavMeshAreas.Set(iAreaIndex, flEarliestOccupyTimeSecondTeam, NavMeshArea_EarliestOccupyTimeSecondTeam);
 
-		delete profiler;
+		float flNavCornerLightIntensityNW = 0.0;
+		float flNavCornerLightIntensityNE = 0.0;
+		float flNavCornerLightIntensitySE = 0.0;
+		float flNavCornerLightIntensitySW = 0.0;
+		
+		int iVisibleAreasStartIndex = -1;
+		int iVisibleAreasEndIndex = -1;
+		
+		int iInheritVisibilityFrom = -1;
+
+		if (iNavVersion >= 11)
+		{
+			ReadFileCell(hFile, view_as<int>(flNavCornerLightIntensityNW), FLOAT_BYTE_SIZE);
+			ReadFileCell(hFile, view_as<int>(flNavCornerLightIntensityNE), FLOAT_BYTE_SIZE);
+			ReadFileCell(hFile, view_as<int>(flNavCornerLightIntensitySE), FLOAT_BYTE_SIZE);
+			ReadFileCell(hFile, view_as<int>(flNavCornerLightIntensitySW), FLOAT_BYTE_SIZE);
+			
+			if (iNavVersion >= 16)
+			{
+				switch (GetEngineVersion())
+				{
+					case Engine_Left4Dead2:
+					{
+						// L4D2 inserts its own custom data before visible area set.
+					}
+					default:
+					{
+						int iVisibleAreaCount = 0;
+						ReadFileCell(hFile, iVisibleAreaCount, UNSIGNED_INT_BYTE_SIZE);
+						
+						// LogMessage("Visible area count: %d", iVisibleAreaCount);
+						
+						if (iVisibleAreaCount > 0)
+						{
+							iVisibleAreasStartIndex = g_hNavMeshAreaVisibleAreas.Length;
+						
+							for (int i = 0; i < iVisibleAreaCount; i++)
+							{
+								AreaBindInfo bindInfo;
+								ReadFileCell(hFile, bindInfo.AreaIndex, UNSIGNED_INT_BYTE_SIZE);
+								ReadFileCell(hFile, bindInfo.Attributes, UNSIGNED_CHAR_BYTE_SIZE);
+								g_hNavMeshAreaVisibleAreas.PushArray(bindInfo, sizeof(bindInfo));
+
+								iVisibleAreasEndIndex = g_AreaVisibleAreasListStartIndex++;
+
+								//LogMessage("Parsed visible area [%d] with attr [%d]", bindInfo.AreaIndex, bindInfo.Attributes);
+							}
+
+							iVisibleAreasEndIndex = g_hNavMeshAreaVisibleAreas.Length - 1;
+						}
+						
+						ReadFileCell(hFile, iInheritVisibilityFrom, UNSIGNED_INT_BYTE_SIZE);
+						
+						// LogMessage("Inherit visibilty from: %d", iInheritVisibilityFrom);
+					}
+				}
+			}
+		}
+
+		g_hNavMeshAreas.Set(iAreaIndex, flNavCornerLightIntensityNW, NavMeshArea_CornerLightIntensityNW);
+		g_hNavMeshAreas.Set(iAreaIndex, flNavCornerLightIntensityNE, NavMeshArea_CornerLightIntensityNE);
+		g_hNavMeshAreas.Set(iAreaIndex, flNavCornerLightIntensitySE, NavMeshArea_CornerLightIntensitySE);
+		g_hNavMeshAreas.Set(iAreaIndex, flNavCornerLightIntensitySW, NavMeshArea_CornerLightIntensitySW);
+
+		g_hNavMeshAreas.Set(iAreaIndex, iVisibleAreasStartIndex, NavMeshArea_VisibleAreasStartIndex);
+		g_hNavMeshAreas.Set(iAreaIndex, iVisibleAreasEndIndex, NavMeshArea_VisibleAreasEndIndex);
+
+		g_hNavMeshAreas.Set(iAreaIndex, iInheritVisibilityFrom, NavMeshArea_InheritVisibilityFrom);
+
+		NavMeshLoadAreaCustomData(hFile, iAreaIndex, iNavVersion, iNavSubVersion);
 	}
+
+	profiler.Stop();
+	LogMessage("Parsed %d areas in %f seconds.", iAreaCount, profiler.Time);
+
+	delete profiler;
 	
 	// Set up the grid.
 	NavMeshGridAllocate(g_flNavMeshExtentLow[0], g_flNavMeshExtentHigh[0], g_flNavMeshExtentLow[1], g_flNavMeshExtentHigh[1]);
@@ -1762,7 +1763,7 @@ bool NavMeshLoad(const char[] sMapName)
 
 	if (iLadderCount > 0)
 	{
-		Profiler profiler = new Profiler();
+		profiler = new Profiler();
 		profiler.Start();
 
 		g_hNavMeshLadders.Resize(iLadderCount);
@@ -1866,6 +1867,7 @@ bool NavMeshLoad(const char[] sMapName)
 		}
 	}
 	
+	// Calculate incoming connections.
 	// Using an ArrayList because a dynamic-allocated array for large meshes results in nasty heap overflow.
 	ArrayList hIncomingConnectionsArray = new ArrayList();
 	hIncomingConnectionsArray.Resize(iAreaCount);
@@ -2584,7 +2586,78 @@ stock void NavMeshGridGetAreasEx(int x, int y, ArrayList buffer)
 	}
 }
 
-stock int NavMeshGetNearestArea(float flPos[3], bool bAnyZ=false, float flMaxDist=10000.0, bool bCheckLOS=false, bool bCheckGround=true, bool bAllowBlocked=false, int iTeam=-2)
+void NavMeshForAllAreasInRadius(const float pos[3], float radius, Handle functorPlugin, NavAreaFunctor functor, any functorData=0)
+{
+	if (g_hNavMeshGridLists.Length == 0) return;
+
+	static int searchMarker = 0;
+
+	searchMarker++;
+
+	ArrayList areas = new ArrayList();
+
+	int originX = NavMeshWorldToGridX(pos[0]);
+	int originY = NavMeshWorldToGridY(pos[1]);
+	int shiftLimit = RoundToCeil(radius / g_flNavMeshGridCellSize);
+
+	float areaCenter[3];
+	float radiusSq = radius*radius;
+
+	for (int shift = 0; shift <= shiftLimit; shift++)
+	{
+		for (int x = (originX - shift); x <= (originX + shift); x++)
+		{
+			if (x < 0 || x >= g_iNavMeshGridSizeX) continue;
+			
+			for (int y = (originY - shift); y <= (originY + shift); y++)
+			{
+				if (y < 0 || y >= g_iNavMeshGridSizeY) continue;
+
+				if (x > (originX - shift) &&
+					x < (originX + shift) &&
+					y > (originY - shift) &&
+					y < (originY + shift))
+				{
+					continue;
+				}
+
+				areas.Clear();
+				NavMeshGridGetAreasEx(x, y, areas);
+
+				for (int i = 0; i < areas.Length; i++)
+				{
+					int areaIndex = areas.Get(i);
+
+					int areaRadiusSearchMarker = g_hNavMeshAreas.Get(areaIndex, NavMeshArea_RadiusSearchMarker);
+					if (areaRadiusSearchMarker == searchMarker)
+						continue; // already visited.
+
+					// Mark as visited.
+					g_hNavMeshAreas.Set(areaIndex, searchMarker, NavMeshArea_RadiusSearchMarker);
+
+					NavMeshAreaGetCenter(areaIndex, areaCenter);
+					float distSq = GetVectorDistance(pos, areaCenter, true);
+					if (distSq <= radiusSq)
+					{
+						bool continueSearch = true;
+
+						Call_StartFunction(functorPlugin, functor);
+						Call_PushCell(areaIndex);
+						Call_PushCell(functorData);
+						Call_Finish(continueSearch);
+
+						if (!continueSearch)
+							break;
+					}
+				}
+			}
+		}
+	}
+
+	delete areas;
+}
+
+int NavMeshGetNearestArea(float flPos[3], bool bAnyZ=false, float flMaxDist=10000.0, bool bCheckLOS=false, bool bCheckGround=true, bool bAllowBlocked=false, int iTeam=-2)
 {
 	if (g_hNavMeshGridLists.Length == 0) return -1;
 	
@@ -2748,7 +2821,7 @@ stock int NavMeshGetNearestArea(float flPos[3], bool bAnyZ=false, float flMaxDis
 	return iClosestAreaIndex;
 }
 
-stock void NavMeshAreaGetClosestPointOnArea(int iAreaIndex, const float flPos[3], float flClose[3])
+void NavMeshAreaGetClosestPointOnArea(int iAreaIndex, const float flPos[3], float flClose[3])
 {
 	float x; float y; float z;
 	
@@ -3812,6 +3885,9 @@ public int Native_CNavMeshGetRandomHidingSpot(Handle plugin, int numParams)
 
 public int Native_CNavMeshSearchSurroundingAreas(Handle plugin, int numParams)
 {
+	if (!g_bNavMeshBuilt)
+		return;
+
 	int startAreaIndex = GetNativeCell(2);
 	NavSearchSurroundingAreasFunctor filterFunc = view_as<NavSearchSurroundingAreasFunctor>(GetNativeFunction(3));
 	SearchSurroundingAreasFlags_t options = view_as<SearchSurroundingAreasFlags_t>(GetNativeCell(5));
@@ -3831,6 +3907,9 @@ public bool CollectSurroundingAreasFunctor(CNavArea area, CNavArea fromArea, CNa
 
 public int Native_CNavMeshCollectSurroundingAreas(Handle plugin, int numParams)
 {
+	if (!g_bNavMeshBuilt)
+		return;
+
 	ArrayList areas = view_as<ArrayList>(GetNativeCell(2));
 	int startAreaIndex = GetNativeCell(3);
 	SearchSurroundingAreasFlags_t options = view_as<SearchSurroundingAreasFlags_t>(GetNativeCell(4));
@@ -3841,24 +3920,65 @@ public int Native_CNavMeshCollectSurroundingAreas(Handle plugin, int numParams)
 	NavMeshSearchSurroundingAreas(startAreaIndex, INVALID_HANDLE, CollectSurroundingAreasFunctor, areas, options, maxRange, maxStepSize, maxDropDownLimit);
 }
 
+public int Native_CNavMeshForAllAreasInRadius(Handle plugin, int numParams)
+{
+	if (!g_bNavMeshBuilt)
+		return;
+
+	float pos[3];
+	GetNativeArray(2, pos, 3);
+	float radius = view_as<float>(GetNativeCell(3));
+	NavAreaFunctor functor = view_as<NavAreaFunctor>(GetNativeFunction(4));
+
+	NavMeshForAllAreasInRadius(pos, radius, plugin, functor, GetNativeCell(5));
+}
+
+public bool CollectAreasInRadiusFunctor(CNavArea area, any data)
+{
+	ArrayList areas = view_as<ArrayList>(data);
+	areas.Push(area);
+	return true;
+}
+
+public int Native_CNavMeshCollectAreasInRadius(Handle plugin, int numParams)
+{
+	if (!g_bNavMeshBuilt)
+		return;
+	
+	float pos[3];
+	GetNativeArray(2, pos, 3);
+	float radius = view_as<float>(GetNativeCell(3));
+	ArrayList buffer = view_as<ArrayList>(GetNativeCell(4));
+
+	NavMeshForAllAreasInRadius(pos, radius, INVALID_HANDLE, CollectAreasInRadiusFunctor, buffer);
+}
+
 public int Native_CNavMeshBuildPath(Handle plugin, int numParams)
 {
+	if (!g_bNavMeshBuilt)
+		return false;
+
+	int startAreaIndex = GetNativeCell(2);
+	int goalAreaIndex = GetNativeCell(3);
 	float flGoalPos[3];
 	GetNativeArray(4, flGoalPos, 3);
-	
-	int iClosestIndex = view_as<int>(GetNativeCellRef(7));
-	
-	bool bResult = NavMeshBuildPath(view_as<int>(GetNativeCell(2)), 
-		view_as<int>(GetNativeCell(3)), 
+	NavPathCostFunctor costFunc = view_as<NavPathCostFunctor>(GetNativeFunction(5));
+
+	int closestAreaIndex = GetNativeCellRef(7);
+	float maxPathLength = view_as<float>(GetNativeCell(8));
+	float maxStepSize = view_as<float>(GetNativeCell(9));
+
+	bool bResult = NavMeshBuildPath(startAreaIndex, 
+		goalAreaIndex, 
 		flGoalPos,
 		plugin,
-		view_as<NavPathCostFunctor>(GetNativeFunction(5)),
+		costFunc,
 		GetNativeCell(6),
-		iClosestIndex,
-		view_as<float>(GetNativeCell(8)),
-		view_as<float>(GetNativeCell(9)));
+		closestAreaIndex,
+		maxPathLength,
+		maxStepSize);
 		
-	SetNativeCellRef(7, iClosestIndex);
+	SetNativeCellRef(7, closestAreaIndex);
 	return bResult;
 }
 
@@ -4043,51 +4163,37 @@ public int Native_NavMeshAreaGetAdjacentList(Handle plugin, int numParams)
 	}
 }
 
-public int Native_NavMeshAreaGetAdjacentAreas(Handle plugin, int numParams)
+public int Native_CNavAreaGetAdjacentAreas(Handle plugin, int numParams)
 {
-	int iAreaIndex = GetNativeCell(1);
-	int iNavDirection = GetNativeCell(2);
-	ArrayList hTarget = view_as<ArrayList>(GetNativeCell(3));
+	int areaIndex = GetNativeCell(1);
+	int direction = GetNativeCell(2);
+	ArrayList buffer = view_as<ArrayList>(GetNativeCell(3));
 
-	int iConnectionsStartIndex = g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_ConnectionsStartIndex);
-	if (iConnectionsStartIndex == -1) return;
-	
-	int iConnectionsEndIndex = g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_ConnectionsEndIndex);
-	
-	for (int i = iConnectionsStartIndex; i <= iConnectionsEndIndex; i++)
+	if (direction == NAV_DIR_COUNT)
 	{
-		int iToAreaIndex = g_hNavMeshAreaConnections.Get(i, NavMeshConnection_AreaIndex);
-		if (iToAreaIndex == -1)
-			continue;
-
-		if (iNavDirection != NAV_DIR_COUNT && g_hNavMeshAreaConnections.Get(i, NavMeshConnection_Direction) != iNavDirection)
-			continue;
-		
-		hTarget.Push(iToAreaIndex);
+		for (int i = 0; i < NAV_DIR_COUNT; i++)
+			NavMeshAreaGetAdjacentListEx(areaIndex, i, buffer);
+	}
+	else 
+	{
+		NavMeshAreaGetAdjacentListEx(areaIndex, direction, buffer);
 	}
 }
 
-public int Native_NavMeshAreaGetIncomingConnections(Handle plugin, int numParams)
+public int Native_CNavAreaGetIncomingConnections(Handle plugin, int numParams)
 {
-	int iAreaIndex = GetNativeCell(1);
-	int iNavDirection = GetNativeCell(2);
-	ArrayList hTarget = view_as<ArrayList>(GetNativeCell(3));
+	int areaIndex = GetNativeCell(1);
+	int direction = GetNativeCell(2);
+	ArrayList buffer = view_as<ArrayList>(GetNativeCell(3));
 
-	int iConnectionsStartIndex = g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_IncomingConnectionsStartIndex);
-	if (iConnectionsStartIndex == -1) return;
-	
-	int iConnectionsEndIndex = g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_IncomingConnectionsEndIndex);
-	
-	for (int i = iConnectionsStartIndex; i <= iConnectionsEndIndex; i++)
+	if (direction == NAV_DIR_COUNT)
 	{
-		int iFromAreaIndex = g_hNavMeshAreaIncomingConnections.Get(i, NavMeshConnection_FromAreaIndex);
-		if (iFromAreaIndex == -1)
-			continue;
-
-		if (iNavDirection != NAV_DIR_COUNT && g_hNavMeshAreaIncomingConnections.Get(i, NavMeshConnection_Direction) != iNavDirection)
-			continue;
-		
-		hTarget.Push(iFromAreaIndex);
+		for (int i = 0; i < NAV_DIR_COUNT; i++)
+			NavMeshAreaGetIncomingConnectionsListEx(areaIndex, i, buffer);
+	}
+	else
+	{
+		NavMeshAreaGetIncomingConnectionsListEx(areaIndex, direction, buffer);
 	}
 }
 
