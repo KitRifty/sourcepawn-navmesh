@@ -561,10 +561,7 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 		return false;
 	}
 	
-	if (iClosestAreaIndex != -1) 
-	{
-		iClosestAreaIndex = iStartAreaIndex;
-	}
+	iClosestAreaIndex = iStartAreaIndex;
 	
 	if (iStartAreaIndex == -1)
 	{
@@ -624,10 +621,7 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 		if (iAreaIndex == iGoalAreaIndex ||
 			(iGoalAreaIndex == -1 && NavMeshAreaContains(iAreaIndex, flGoalPos)))
 		{
-			if (iClosestAreaIndex != -1)
-			{
-				iClosestAreaIndex = iGoalAreaIndex;
-			}
+			iClosestAreaIndex = iGoalAreaIndex;
 			
 			return true;
 		}
