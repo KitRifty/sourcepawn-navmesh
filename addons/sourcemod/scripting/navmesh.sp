@@ -683,10 +683,7 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 		return false;
 	}
 	
-	if (iClosestAreaIndex != -1) 
-	{
-		iClosestAreaIndex = iStartAreaIndex;
-	}
+	iClosestAreaIndex = iStartAreaIndex;
 	
 	if (iStartAreaIndex == -1)
 	{
