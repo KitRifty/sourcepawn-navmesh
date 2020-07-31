@@ -45,7 +45,7 @@ public void OnMapStart()
 
 void DrawNavArea( int client, CNavArea area, const int color[4], float duration=0.15 ) 
 {
-	if ( !IsClientInGame(client) || area == INVALID_NAV_AREA )
+	if ( !IsClientInGame(client) || IsFakeClient(client) || area == INVALID_NAV_AREA )
 		return;
 
 	float from[3], to[3];
@@ -152,10 +152,10 @@ public void OnGameFrame()
 					delete connections;
 					delete incomingConnections;
 				}
-				case 2: // Test CollectSurroundingAreas
+				case 2, 3: // Test CollectSurroundingAreas, CollectAreasInRadius
 				{
 					float pos[3];
-					float range = 800.0;
+					float range;
 					GetClientAbsOrigin(client, pos);
 
 					CNavArea area = TheNavMesh.GetNearestNavArea(pos, GETNAVAREA_ALLOW_BLOCKED_AREAS | GETNAVAREA_CHECK_GROUND);
@@ -163,8 +163,17 @@ public void OnGameFrame()
 						continue;
 					
 					ArrayList areas = new ArrayList();
-					TheNavMesh.CollectSurroundingAreas(areas, area, _, range);
-
+					if (g_iPlayerTrackNavArea[client] == 2)
+					{
+						range = 300.0;
+						TheNavMesh.CollectSurroundingAreas(areas, area, pos, _, range, _, _, true);
+					}
+					else
+					{
+						range = 300.0;
+						TheNavMesh.CollectAreasInRadius(pos, range, areas, true);
+					}	
+					
 					for (int i = 0; i < areas.Length; i++)
 					{
 						DrawNavArea(client, areas.Get(i), FocusedAreaColor);	

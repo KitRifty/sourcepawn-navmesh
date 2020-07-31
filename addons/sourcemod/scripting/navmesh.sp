@@ -505,7 +505,7 @@ stock float NavMeshAreaComputeAdjacentConnectionHeightChange(int iAreaIndex, int
 	return flOtherEdge[2] - flMyEdge[2];
 }
 
-void NavMeshSearchSurroundingAreas(int startAreaIndex, Handle filterFuncPlugin, NavSearchSurroundingAreasFunctor filterFunc, any filterData=0, SearchSurroundingAreasFlags_t options=SEARCHSURROUNDAREAS_NONE, float maxRange=0.0, float maxStepSize=StepHeight, float maxDropDownLimit=100.0)
+void NavMeshSearchSurroundingAreas(int startAreaIndex, const float startPos[3], Handle filterFuncPlugin, NavSearchSurroundingAreasFunctor filterFunc, any filterData=0, SearchSurroundingAreasFlags_t options=SEARCHSURROUNDAREAS_NONE, float maxRange=0.0, float maxStepSize=StepHeight, float maxDropDownLimit=100.0, bool usePortal=false)
 {
 	if (!g_bNavMeshBuilt || startAreaIndex == -1)
 		return;
@@ -542,19 +542,25 @@ void NavMeshSearchSurroundingAreas(int startAreaIndex, Handle filterFuncPlugin, 
 			if (maxDropDownLimit > 0.0 && flDeltaZ < -maxDropDownLimit) continue;
 		}
 
-		NavMeshAreaMark(areaIndex);
-
 		bool include = true;
 
-		Call_StartFunction(filterFuncPlugin, filterFunc);
-		Call_PushCell(areaIndex);
-		Call_PushCell(parentAreaIndex);
-		Call_PushCell(-1);
-		Call_PushCell(filterData);
-		Call_Finish(include);
+		if (!NavMeshAreaIsMarked(areaIndex))
+		{
+			NavMeshAreaMark(areaIndex);
+
+			Call_StartFunction(filterFuncPlugin, filterFunc);
+			Call_PushCell(areaIndex);
+			Call_PushCell(parentAreaIndex);
+			Call_PushCell(-1);
+			Call_PushCell(filterData);
+			Call_Finish(include);
+		}
 
 		if (!include)
 			continue;
+
+		int parentArea = g_hNavMeshAreas.Get(areaIndex, NavMeshArea_Parent);
+		int parentHow = g_hNavMeshAreas.Get(areaIndex, NavMeshArea_ParentHow);
 
 		for (int direction = 0; direction < NAV_DIR_COUNT; direction++)
 		{
@@ -569,20 +575,49 @@ void NavMeshSearchSurroundingAreas(int startAreaIndex, Handle filterFuncPlugin, 
 			for (int i = 0; i < connections.Length; i++)
 			{
 				int otherAreaIndex = connections.Get(i);
+				if (otherAreaIndex == -1 || otherAreaIndex == parentArea)
+					continue; // no backtracking.
+
+				int costSoFar;
+
+				if (usePortal)
+				{
+					float fromPos[3];
+					float toPos[3];
+					float halfWidth;
+
+					if (parentArea == -1)
+					{
+						fromPos[0] = startPos[0]; fromPos[1] = startPos[1]; fromPos[2] = startPos[2];
+					}
+					else
+						NavMeshAreaComputePortal(parentArea, areaIndex, parentHow, fromPos, halfWidth);
+					
+					NavMeshAreaComputePortal(areaIndex, otherAreaIndex, direction, toPos, halfWidth);
+
+					costSoFar = g_hNavMeshAreas.Get(areaIndex, NavMeshArea_CostSoFar) +
+						RoundToFloor(GetVectorDistance(fromPos, toPos));
+				}
+				else
+				{
+					NavMeshAreaGetCenter(areaIndex, areaCenter);
+					NavMeshAreaGetCenter(otherAreaIndex, otherAreaCenter);
+
+					costSoFar = g_hNavMeshAreas.Get(areaIndex, NavMeshArea_CostSoFar) +
+						RoundToFloor(GetVectorDistance(areaCenter, otherAreaCenter));
+				}
+
 				if (NavMeshAreaIsMarked(otherAreaIndex))
-					continue;
-				
-				NavMeshAreaGetCenter(areaIndex, areaCenter);
-				NavMeshAreaGetCenter(otherAreaIndex, otherAreaCenter);
+				{
+					if ( costSoFar >= g_hNavMeshAreas.Get(otherAreaIndex, NavMeshArea_CostSoFar) )
+						continue;
+				}
 
 				g_hNavMeshAreas.Set(otherAreaIndex, areaIndex, NavMeshArea_Parent);
 				g_hNavMeshAreas.Set(otherAreaIndex, direction, NavMeshArea_ParentHow);
-				
-				int distAlong = g_hNavMeshAreas.Get(areaIndex, NavMeshArea_CostSoFar) +
-					RoundToFloor(GetVectorDistance(areaCenter, otherAreaCenter));
-				
-				g_hNavMeshAreas.Set(otherAreaIndex, distAlong, NavMeshArea_CostSoFar);
-				g_hNavMeshAreas.Set(otherAreaIndex, distAlong, NavMeshArea_TotalCost);
+				g_hNavMeshAreas.Set(otherAreaIndex, 0, NavMeshArea_TotalCost);
+				g_hNavMeshAreas.Set(otherAreaIndex, costSoFar, NavMeshArea_CostSoFar);
+
 				NavMeshAreaAddToOpenList(otherAreaIndex);
 			}
 		}
@@ -2583,7 +2618,7 @@ stock void NavMeshGridGetAreasEx(int x, int y, ArrayList buffer)
 	}
 }
 
-void NavMeshForAllAreasInRadius(const float pos[3], float radius, Handle functorPlugin, NavAreaFunctor functor, any functorData=0)
+void NavMeshForAllAreasInRadius(const float pos[3], float radius, Handle functorPlugin, NavAreaFunctor functor, any functorData=0, bool useClosestPoint=false)
 {
 	if (g_hNavMeshGridLists.Length == 0) return;
 
@@ -2632,7 +2667,11 @@ void NavMeshForAllAreasInRadius(const float pos[3], float radius, Handle functor
 					// Mark as visited.
 					g_hNavMeshAreas.Set(areaIndex, searchMarker, NavMeshArea_RadiusSearchMarker);
 
-					NavMeshAreaGetCenter(areaIndex, areaCenter);
+					if (useClosestPoint)
+						NavMeshAreaGetClosestPointOnArea(areaIndex, pos, areaCenter);
+					else
+						NavMeshAreaGetCenter(areaIndex, areaCenter);
+
 					float distSq = GetVectorDistance(pos, areaCenter, true);
 					if (distSq <= radiusSq)
 					{
@@ -2654,7 +2693,7 @@ void NavMeshForAllAreasInRadius(const float pos[3], float radius, Handle functor
 	delete areas;
 }
 
-int NavMeshGetNearestArea(float flPos[3], bool bAnyZ=false, float flMaxDist=10000.0, bool bCheckLOS=false, bool bCheckGround=true, bool bAllowBlocked=false, int iTeam=-2)
+int NavMeshGetNearestArea(const float flPos[3], bool bAnyZ=false, float flMaxDist=10000.0, bool bCheckLOS=false, bool bCheckGround=true, bool bAllowBlocked=false, int iTeam=-2)
 {
 	if (g_hNavMeshGridLists.Length == 0) return -1;
 	
@@ -3886,13 +3925,16 @@ public int Native_CNavMeshSearchSurroundingAreas(Handle plugin, int numParams)
 		return;
 
 	int startAreaIndex = GetNativeCell(2);
-	NavSearchSurroundingAreasFunctor filterFunc = view_as<NavSearchSurroundingAreasFunctor>(GetNativeFunction(3));
-	SearchSurroundingAreasFlags_t options = view_as<SearchSurroundingAreasFlags_t>(GetNativeCell(5));
-	float maxRange = view_as<float>(GetNativeCell(6));
-	float maxStepSize = view_as<float>(GetNativeCell(7));
-	float maxDropDownLimit = view_as<float>(GetNativeCell(8));
+	float startPos[3];
+	GetNativeArray(3, startPos, 3);
+	NavSearchSurroundingAreasFunctor filterFunc = view_as<NavSearchSurroundingAreasFunctor>(GetNativeFunction(4));
+	SearchSurroundingAreasFlags_t options = view_as<SearchSurroundingAreasFlags_t>(GetNativeCell(6));
+	float maxRange = view_as<float>(GetNativeCell(7));
+	float maxStepSize = view_as<float>(GetNativeCell(8));
+	float maxDropDownLimit = view_as<float>(GetNativeCell(9));
+	bool usePortal = view_as<bool>(GetNativeCell(10));
 
-	NavMeshSearchSurroundingAreas(startAreaIndex, plugin, filterFunc, GetNativeCell(4), options, maxRange, maxStepSize, maxDropDownLimit);
+	NavMeshSearchSurroundingAreas(startAreaIndex, startPos, plugin, filterFunc, GetNativeCell(5), options, maxRange, maxStepSize, maxDropDownLimit, usePortal);
 }
 
 public bool CollectSurroundingAreasFunctor(CNavArea area, CNavArea fromArea, CNavLadder ladder, any data)
@@ -3909,12 +3951,15 @@ public int Native_CNavMeshCollectSurroundingAreas(Handle plugin, int numParams)
 
 	ArrayList areas = view_as<ArrayList>(GetNativeCell(2));
 	int startAreaIndex = GetNativeCell(3);
-	SearchSurroundingAreasFlags_t options = view_as<SearchSurroundingAreasFlags_t>(GetNativeCell(4));
-	float maxRange = view_as<float>(GetNativeCell(5));
-	float maxStepSize = view_as<float>(GetNativeCell(6));
-	float maxDropDownLimit = view_as<float>(GetNativeCell(7));
+	float startPos[3];
+	GetNativeArray(4, startPos, 3);
+	SearchSurroundingAreasFlags_t options = view_as<SearchSurroundingAreasFlags_t>(GetNativeCell(5));
+	float maxRange = view_as<float>(GetNativeCell(6));
+	float maxStepSize = view_as<float>(GetNativeCell(7));
+	float maxDropDownLimit = view_as<float>(GetNativeCell(8));
+	bool usePortal = view_as<bool>(GetNativeCell(9));
 
-	NavMeshSearchSurroundingAreas(startAreaIndex, INVALID_HANDLE, CollectSurroundingAreasFunctor, areas, options, maxRange, maxStepSize, maxDropDownLimit);
+	NavMeshSearchSurroundingAreas(startAreaIndex, startPos, INVALID_HANDLE, CollectSurroundingAreasFunctor, areas, options, maxRange, maxStepSize, maxDropDownLimit, usePortal);
 }
 
 public int Native_CNavMeshForAllAreasInRadius(Handle plugin, int numParams)
@@ -3926,8 +3971,9 @@ public int Native_CNavMeshForAllAreasInRadius(Handle plugin, int numParams)
 	GetNativeArray(2, pos, 3);
 	float radius = view_as<float>(GetNativeCell(3));
 	NavAreaFunctor functor = view_as<NavAreaFunctor>(GetNativeFunction(4));
+	bool useClosestPoint = view_as<bool>(GetNativeCell(6));
 
-	NavMeshForAllAreasInRadius(pos, radius, plugin, functor, GetNativeCell(5));
+	NavMeshForAllAreasInRadius(pos, radius, plugin, functor, GetNativeCell(5), useClosestPoint);
 }
 
 public bool CollectAreasInRadiusFunctor(CNavArea area, any data)
@@ -3946,8 +3992,9 @@ public int Native_CNavMeshCollectAreasInRadius(Handle plugin, int numParams)
 	GetNativeArray(2, pos, 3);
 	float radius = view_as<float>(GetNativeCell(3));
 	ArrayList buffer = view_as<ArrayList>(GetNativeCell(4));
+	bool useClosestPoint = view_as<bool>(GetNativeCell(5));
 
-	NavMeshForAllAreasInRadius(pos, radius, INVALID_HANDLE, CollectAreasInRadiusFunctor, buffer);
+	NavMeshForAllAreasInRadius(pos, radius, INVALID_HANDLE, CollectAreasInRadiusFunctor, buffer, useClosestPoint);
 }
 
 public int Native_CNavMeshBuildPath(Handle plugin, int numParams)

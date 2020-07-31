@@ -214,6 +214,7 @@ methodmap CNavMesh
 	 *	Iterate through areas surrounding startArea.
 	 *
 	 *	@param	startArea			The starting area.
+	 *	@param	startPos			The starting position.
 	 *	@param	filterFunc			The function that (after checking if area's blocked/cost/height change) determines if search should 
 	 *								continue outward from the current area.
 	 *	@param	filterData			Optional. User-defined data to pass to filterFunc.
@@ -221,40 +222,49 @@ methodmap CNavMesh
 	 *	@param	maxRange			Optional. Maximum travel distance to search.
 	 *	@param	maxStepSize			Optional. Maximum position height change allowed to next area. If 0.0, then no limit.
 	 *	@param	maxDropDownLimit	Optional. Maximum negative height change allowed to next area. If 0.0, then no limit.
+	 *	@param	usePortal			Optional. If true, will calculate travel cost using closest point in portal.
+	 *								By default, distance is calculated from center of area (which may be problematic for large areas.)
 	 */
-	public native void SearchSurroundingAreas(CNavArea startArea, NavSearchSurroundingAreasFunctor filterFunc, any filterData=0, SearchSurroundingAreasFlags_t options=SEARCHSURROUNDAREAS_NONE, float maxRange=1500.0, float maxStepSize=StepHeight, float maxDropDownLimit=100.0);
+	public native void SearchSurroundingAreas(CNavArea startArea, const float startPos[3], NavSearchSurroundingAreasFunctor filterFunc, any filterData=0, SearchSurroundingAreasFlags_t options=SEARCHSURROUNDAREAS_NONE, float maxRange=1500.0, float maxStepSize=StepHeight, float maxDropDownLimit=100.0, bool usePortal=false);
 
 	/**
 	 *	Collect areas surrounding startArea. This uses SearchSurroundingAreas() internally.
 	 *
 	 *	@param	areas				Buffer that receives the areas.
 	 *	@param	startArea			The starting area.
+	 *	@param	startPos			The starting position.
 	 *	@param	options				Optional. Flags that change behavior of this function. See SearchSurroundingAreasFlags_t.
 	 *	@param	maxRange			Optional. Maximum travel distance to search.
 	 *	@param	maxStepSize			Optional. Maximum position height change allowed to next area. If 0.0, then no limit.
 	 *	@param	maxDropDownLimit	Optional. Maximum negative height change allowed to next area. If 0.0, then no limit.
+	 *	@param	usePortal			Optional. If true, will calculate travel cost using closest point in portal.
+	 *								By default, distance is calculated from center of area (which may be problematic for large areas.)
 	 */
-	public native void CollectSurroundingAreas(ArrayList areas, CNavArea startArea, SearchSurroundingAreasFlags_t options=SEARCHSURROUNDAREAS_NONE, float maxRange=1500.0, float maxStepSize=StepHeight, float maxDropDownLimit=100.0);
+	public native void CollectSurroundingAreas(ArrayList areas, CNavArea startArea, const float startPos[3], SearchSurroundingAreasFlags_t options=SEARCHSURROUNDAREAS_NONE, float maxRange=1500.0, float maxStepSize=StepHeight, float maxDropDownLimit=100.0, bool usePortal=false);
 
 	/**
 	 *	Iterate areas located in a radius around the given position.
 	 *
-	 *	@param	pos				The position to calculate from.
-	 *	@param	radius			Maximum distance of search from position.
-	 *	@param	functor			Callback function that is called for every area searched. If the functor returns false,
-	 *							search will stop.
-	 *	@param	functorData		Optional. User-defined data for functor.
+	 *	@param	pos					The position to calculate from.
+	 *	@param	radius				Maximum distance of search from position.
+	 *	@param	functor				Callback function that is called for every area searched. If the functor returns false,
+	 *								search will stop.
+	 *	@param	functorData			Optional. User-defined data for functor.
+	 *	@param	useClosestPoint		Optional. If true, will calculate distance using the closest point to pos on area.
+	 *								By default, distance is calculated from center of area (which may be problematic for large areas.)
 	 */
-	public native void ForAllAreasInRadius(const float pos[3], float radius, NavAreaFunctor functor, any functorData=0)
+	public native void ForAllAreasInRadius(const float pos[3], float radius, NavAreaFunctor functor, any functorData=0, bool useClosestPoint=false)
 
 	/**
 	 *	Collect areas located in a radius around the given position. This uses ForAllAreasInRadius() internally.
 	 *
-	 *	@param	pos			The position to calculate from.
-	 *	@param	radius		Maximum distance of search from position.
-	 *	@param	buffer		ArrayList that will receive the areas.
+	 *	@param	pos					The position to calculate from.
+	 *	@param	radius				Maximum distance of search from position.
+	 *	@param	buffer				ArrayList that will receive the areas.
+	 *	@param	useClosestPoint		Optional. If true, will calculate distance using the closest point to pos on area.
+	 *								By default, distance is calculated from center of area (which may be problematic for large areas.)
 	 */
-	public native void CollectAreasInRadius(const float pos[3], float radius, ArrayList buffer);
+	public native void CollectAreasInRadius(const float pos[3], float radius, ArrayList buffer, bool useClosestPoint=false);
 
 	/**
 	 *	Find path from startArea to goalArea via an A* search, using supplied cost heuristic.
