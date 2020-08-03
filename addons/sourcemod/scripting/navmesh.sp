@@ -207,15 +207,6 @@ int g_iNavMeshSubVersion;
 int g_iNavMeshSaveBSPSize;
 bool g_bNavMeshAnalyzed;
 
-ArrayList g_hNavMeshGrid;
-ArrayList g_hNavMeshGridLists;
-
-float g_flNavMeshGridCellSize = 300.0;
-float g_flNavMeshMinX;
-float g_flNavMeshMinY;
-int g_iNavMeshGridSizeX;
-int g_iNavMeshGridSizeY;
-
 #define HighExtent 99999999.9
 #define LowExtent -99999999.9
 
@@ -237,6 +228,165 @@ ArrayList g_hCSNavAreaApproachInfo;
 // L4D
 char g_TerrorNavMeshZombiePopulation[64];
 float g_TerrorNavMeshNavMaxViewDistance;
+
+enum struct NavGridTable
+{
+	ArrayList Cells;
+	ArrayList ContainedAreas;
+	float CellSize;
+	int SizeX;
+	int SizeY;
+	float MinX;
+	float MinY;
+
+	void Init(float cellSize)
+	{
+		this.Cells = new ArrayList(NavMeshGrid_MaxStats);
+		this.ContainedAreas = new ArrayList(NavMeshGridList_MaxStats);
+		this.CellSize = cellSize;
+	}
+
+	bool IsEmpty()
+	{
+		return this.Cells.Length == 0;
+	}
+
+	int WorldToGridX(float flWX)
+	{
+		int x = IntCast((flWX - this.MinX) / this.CellSize);
+		
+		if (x < 0) x = 0;
+		else if (x >= this.SizeX) 
+		{
+			x = this.SizeX - 1;
+		}
+		
+		return x;
+	}
+
+	int WorldToGridY(float flWY)
+	{
+		int y = IntCast((flWY - this.MinY) / this.CellSize);
+		
+		if (y < 0) y = 0;
+		else if (y >= this.SizeY) 
+		{
+			y = this.SizeY - 1;
+		}
+		
+		return y;
+	}
+
+	void Allocate(float flMinX, float flMaxX, float flMinY, float flMaxY)
+	{
+		this.Cells.Clear();
+		this.ContainedAreas.Clear();
+		
+		this.MinX = flMinX;
+		this.MinY = flMinY;
+		
+		this.SizeX = IntCast((flMaxX - flMinX) / this.CellSize) + 1;
+		this.SizeY = IntCast((flMaxY - flMinY) / this.CellSize) + 1;
+		
+		int iArraySize = this.SizeX * this.SizeY;
+		this.Cells.Resize(iArraySize);
+		
+		for (int i = 0; i < iArraySize; i++)
+		{
+			this.Cells.Set(i, -1, NavMeshGrid_ListStartIndex);
+			this.Cells.Set(i, -1, NavMeshGrid_ListEndIndex);
+		}
+	}
+
+	void AddArea(int areaIndex)
+	{
+		float flExtentLow[2]; float flExtentHigh[2];
+
+		flExtentLow[0] = view_as<float>(g_hNavMeshAreas.Get(areaIndex, NavMeshArea_X1));
+		flExtentLow[1] = view_as<float>(g_hNavMeshAreas.Get(areaIndex, NavMeshArea_Y1));
+		flExtentHigh[0] = view_as<float>(g_hNavMeshAreas.Get(areaIndex, NavMeshArea_X2));
+		flExtentHigh[1] = view_as<float>(g_hNavMeshAreas.Get(areaIndex, NavMeshArea_Y2));
+		
+		int loX = this.WorldToGridX(flExtentLow[0]);
+		int loY = this.WorldToGridY(flExtentLow[1]);
+		int hiX = this.WorldToGridX(flExtentHigh[0]);
+		int hiY = this.WorldToGridY(flExtentHigh[1]);
+		
+		// Push array to all cells that the area overlaps.
+		for (int y = loY; y <= hiY; y++)
+		{
+			for (int x = loX; x <= hiX; x++)
+			{
+				int cellIndex = x + y * this.SizeX;
+				
+				int index = this.ContainedAreas.Push(areaIndex);
+				this.ContainedAreas.Set(index, cellIndex, NavMeshGridList_Owner);
+			}
+		}
+	}
+
+	void Finalize()
+	{
+		this.ContainedAreas.SortCustom(SortNavMeshGridLists);
+
+		int currentCell = -1;
+
+		// Elements of ContainedAreas is sorted by the NavMeshGridList_Owner property.
+		for (int i = 0; i < this.ContainedAreas.Length; i++)
+		{
+			int cellIndex = this.ContainedAreas.Get(i, NavMeshGridList_Owner);
+			if (cellIndex == -1) continue; // This shouldn't ever happen.
+
+			if (cellIndex != currentCell)
+			{
+				if (currentCell != -1)
+					this.Cells.Set(currentCell, i - 1, NavMeshGrid_ListEndIndex); // Supposed to be inclusive indices.
+				
+				currentCell = cellIndex;
+				this.Cells.Set(currentCell, i, NavMeshGrid_ListStartIndex);
+			}
+		}
+
+		if (currentCell != -1 && this.Cells.Get(currentCell, NavMeshGrid_ListEndIndex) == -1)
+		{
+			this.Cells.Set(currentCell, this.ContainedAreas.Length - 1, NavMeshGrid_ListEndIndex);
+		}
+	}
+
+	void GetAreasEx(int x, int y, ArrayList buffer)
+	{
+		int cellIndex = x + y * this.SizeX;
+		int startIndex = this.Cells.Get(cellIndex, NavMeshGrid_ListStartIndex);
+		int endIndex = this.Cells.Get(cellIndex, NavMeshGrid_ListEndIndex);
+
+		if (startIndex == -1)
+			return;
+		
+		for (int i = startIndex; i <= endIndex; i++)
+		{
+			buffer.Push(this.ContainedAreas.Get(i));
+		}
+	}
+
+	void Cleanup()
+	{
+		delete this.Cells;
+		delete this.ContainedAreas;
+	}
+}
+
+NavGridTable TheNavGrid;
+
+static int SortNavMeshGridLists(int index1, int index2, Handle ar, Handle hndl)
+{
+	ArrayList array = view_as<ArrayList>(ar);
+	int iGridIndex1 = array.Get(index1, NavMeshGridList_Owner);
+	int iGridIndex2 = array.Get(index2, NavMeshGridList_Owner);
+	
+	if (iGridIndex1 < iGridIndex2) return -1;
+	else if (iGridIndex1 > iGridIndex2) return 1;
+	return 0;
+}
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
@@ -350,11 +500,27 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("CNavArea.ComputeDirection", Native_NavMeshAreaComputeDirection);
 	CreateNative("CNavArea.GetLightIntensity", Native_NavMeshAreaGetLightIntensity);
 
+	CreateNative("HidingSpot.ID.get", Native_NavHidingSpotGetID);
+	CreateNative("HidingSpot.Flags.get", Native_NavHidingSpotGetFlags);
+	CreateNative("HidingSpot.Area.get", Native_NavHidingSpotGetArea);
+	CreateNative("HidingSpot.GetPosition", Native_NavHidingSpotGetPosition);
+	CreateNative("HidingSpot.GetArea", Native_NavHidingSpotGetArea);
+
 	CreateNative("NavHidingSpot_GetID", Native_NavHidingSpotGetID);
 	CreateNative("NavHidingSpot_GetFlags", Native_NavHidingSpotGetFlags);
 	CreateNative("NavHidingSpot_GetPosition", Native_NavHidingSpotGetPosition);
 	CreateNative("NavHidingSpot_GetArea", Native_NavHidingSpotGetArea);
 	
+	CreateNative("CNavLadder.Length.get", Native_NavMeshLadderGetLength);
+	CreateNative("CNavLadder.Width.get", Native_NavMeshLadderGetWidth);
+	CreateNative("CNavLadder.TopForwardArea.get", Native_NavMeshLadderGetTopForwardArea);
+	CreateNative("CNavLadder.TopLeftArea.get", Native_NavMeshLadderGetTopLeftArea);
+	CreateNative("CNavLadder.TopRightArea.get", Native_NavMeshLadderGetTopRightArea);
+	CreateNative("CNavLadder.TopBehindArea.get", Native_NavMeshLadderGetTopBehindArea);
+	CreateNative("CNavLadder.BottomArea.get", Native_NavMeshLadderGetBottomArea);
+	CreateNative("CNavLadder.GetTop", Native_NavMeshLadderGetTop);
+	CreateNative("CNavLadder.GetBottom", Native_NavMeshLadderGetBottom);
+
 	CreateNative("NavMeshLadder_GetLength", Native_NavMeshLadderGetLength);
 	CreateNative("NavMeshLadder_GetWidth", Native_NavMeshLadderGetWidth);
 	CreateNative("NavMeshLadder_GetTopForwardArea", Native_NavMeshLadderGetTopForwardArea);
@@ -365,12 +531,21 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("NavMeshLadder_GetTop", Native_NavMeshLadderGetTop);
 	CreateNative("NavMeshLadder_GetBottom", Native_NavMeshLadderGetBottom);
 	
+	CreateNative("SpotEncounter.From.get", Native_NavSpotEncounterGetFrom);
+	CreateNative("SpotEncounter.FromDirection.get", Native_NavSpotEncounterGetFromDirection);
+	CreateNative("SpotEncounter.To.get", Native_NavSpotEncounterGetTo);
+	CreateNative("SpotEncounter.ToDirection.get", Native_NavSpotEncounterGetToDirection);
+	CreateNative("SpotEncounter.GetSpots", Native_NavSpotEncounterGetSpots);
+
 	CreateNative("NavSpotEncounter_GetFrom", Native_NavSpotEncounterGetFrom);
 	CreateNative("NavSpotEncounter_GetFromDirection", Native_NavSpotEncounterGetFromDirection);
 	CreateNative("NavSpotEncounter_GetTo", Native_NavSpotEncounterGetTo);
 	CreateNative("NavSpotEncounter_GetToDirection", Native_NavSpotEncounterGetToDirection);
 	CreateNative("NavSpotEncounter_GetSpots", Native_NavSpotEncounterGetSpots);
 	
+	CreateNative("SpotOrder.HidingSpot.get", Native_NavSpotOrderGetHidingSpot);
+	CreateNative("SpotOrder.ParametricDistance.get", Native_NavSpotOrderGetParametricDistance);
+
 	CreateNative("NavSpotOrder_GetHidingSpot", Native_NavSpotOrderGetHidingSpot);
 	CreateNative("NavSpotOrder_GetParametricDistance", Native_NavSpotOrderGetParametricDistance);
 
@@ -407,9 +582,8 @@ public void OnPluginStart()
 	
 	g_hNavMeshLadders = new ArrayList(NavMeshLadder_MaxStats);
 	
-	g_hNavMeshGrid = new ArrayList(NavMeshGrid_MaxStats);
-	g_hNavMeshGridLists = new ArrayList(NavMeshGridList_MaxStats);
-	
+	TheNavGrid.Init(300.0);
+
 	g_hNavMeshAreaIdToIndexMap = new StringMap();
 	g_hNavMeshHidingSpotIdToIndexMap = new StringMap();
 	g_hNavMeshLadderIdToIndexMap = new StringMap();
@@ -1777,15 +1951,14 @@ bool NavMeshLoad(const char[] sMapName)
 
 	delete profiler;
 	
-	// Set up the grid.
-	NavMeshGridAllocate(g_flNavMeshExtentLow[0], g_flNavMeshExtentHigh[0], g_flNavMeshExtentLow[1], g_flNavMeshExtentHigh[1]);
-	
+	TheNavGrid.Allocate(g_flNavMeshExtentLow[0], g_flNavMeshExtentHigh[0], g_flNavMeshExtentLow[1], g_flNavMeshExtentHigh[1]);
+
 	for (int i = 0; i < iAreaCount; i++)
 	{
-		NavMeshAddAreaToGrid(i);
+		TheNavGrid.AddArea(i);
 	}
 	
-	NavMeshGridFinalize();
+	TheNavGrid.Finalize();
 	
 	// Read ladders.
 	int iLadderCount = 0;
@@ -2362,9 +2535,6 @@ void NavMeshDestroy()
 	g_hNavMeshAreaVisibleAreas.Clear();
 	g_hNavMeshLadders.Clear();
 	
-	g_hNavMeshGrid.Clear();
-	g_hNavMeshGridLists.Clear();
-	
 	g_iNavMeshMagicNumber = 0;
 	g_iNavMeshVersion = 0;
 	g_iNavMeshSubVersion = 0;
@@ -2418,209 +2588,35 @@ void NavMeshPostLoad(bool success)
 	Call_Finish();
 }
 
-void NavMeshGridAllocate(float flMinX, float flMaxX, float flMinY, float flMaxY)
-{
-	g_hNavMeshGrid.Clear();
-	g_hNavMeshGridLists.Clear();
-	
-	g_flNavMeshMinX = flMinX;
-	g_flNavMeshMinY = flMinY;
-	
-	g_iNavMeshGridSizeX = IntCast((flMaxX - flMinX) / g_flNavMeshGridCellSize) + 1;
-	g_iNavMeshGridSizeY = IntCast((flMaxY - flMinY) / g_flNavMeshGridCellSize) + 1;
-	
-	int iArraySize = g_iNavMeshGridSizeX * g_iNavMeshGridSizeY;
-	g_hNavMeshGrid.Resize(iArraySize);
-	
-	for (int iGridIndex = 0; iGridIndex < iArraySize; iGridIndex++)
-	{
-		g_hNavMeshGrid.Set(iGridIndex, -1, NavMeshGrid_ListStartIndex);
-		g_hNavMeshGrid.Set(iGridIndex, -1, NavMeshGrid_ListEndIndex);
-	}
-}
-
-void NavMeshGridFinalize()
-{
-	bool bAllIn = true;
-	
-	SortADTArrayCustom(g_hNavMeshGridLists, SortNavMeshGridLists);
-	
-	for (int iGridIndex = 0, iSize = g_hNavMeshGrid.Length; iGridIndex < iSize; iGridIndex++)
-	{
-		int iStartIndex = -1;
-		int iEndIndex = -1;
-		NavMeshGridGetListBounds(iGridIndex, iStartIndex, iEndIndex);
-		g_hNavMeshGrid.Set(iGridIndex, iStartIndex, NavMeshGrid_ListStartIndex);
-		g_hNavMeshGrid.Set(iGridIndex, iEndIndex, NavMeshGrid_ListEndIndex);
-		
-		if (iStartIndex != -1)
-		{
-			for (int iListIndex = iStartIndex; iListIndex <= iEndIndex; iListIndex++)
-			{
-				int iAreaIndex = GetArrayCell(g_hNavMeshGridLists, iListIndex);
-				if (iAreaIndex != -1)
-				{
-					
-				}
-				else
-				{
-					LogError("Warning! Invalid nav area found in list of grid index %d!", iGridIndex);
-					bAllIn = false;
-				}
-			}
-		}
-	}
-	
-	if (!bAllIn)
-	{
-		LogError("Warning! Not all nav areas were parsed into the grid! Please check your nav mesh!");
-	}
-}
-
-// The following functions should ONLY be called during NavMeshLoad(), due to displacement of
-// array indexes!
-
-// Some things to take into account: because we're adding things into the
-// array, it's inevitable that the indexes will change over time. Therefore,
-// we can't assign array indexes while this function is running, since it
-// will shift preceding array indexes.
-
-// The array indexes should be assigned afterwards using NavMeshGridFinalize().
-
-public int SortNavMeshGridLists(int index1, int index2, Handle ar, Handle hndl)
-{
-	ArrayList array = view_as<ArrayList>(ar);
-	int iGridIndex1 = array.Get(index1, NavMeshGridList_Owner);
-	int iGridIndex2 = array.Get(index2, NavMeshGridList_Owner);
-	
-	if (iGridIndex1 < iGridIndex2) return -1;
-	else if (iGridIndex1 > iGridIndex2) return 1;
-	return 0;
-}
-
-void NavMeshGridAddAreaToList(int iGridIndex, int iAreaIndex)
-{
-	int iIndex = g_hNavMeshGridLists.Push(iAreaIndex);
-	
-	if (iIndex != -1)
-	{
-		g_hNavMeshGridLists.Set(iIndex, iGridIndex, NavMeshGridList_Owner);
-	}
-}
-
-void NavMeshGridGetListBounds(int iGridIndex, int &iStartIndex, int &iEndIndex)
-{
-	iStartIndex = -1;
-	iEndIndex = -1;
-	
-	for (int i = 0, iSize = g_hNavMeshGridLists.Length; i < iSize; i++)
-	{
-		if (g_hNavMeshGridLists.Get(i, NavMeshGridList_Owner) == iGridIndex)
-		{
-			if (iStartIndex == -1) iStartIndex = i;
-			iEndIndex = i;
-		}
-	}
-}
-
-void NavMeshAddAreaToGrid(iAreaIndex)
-{
-	float flExtentLow[2]; float flExtentHigh[2];
-//	NavMeshAreaGetExtentLow(iAreaIndex, flExtentLow);
-//	NavMeshAreaGetExtentHigh(iAreaIndex, flExtentHigh);
-	
-	flExtentLow[0] = view_as<float>(g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_X1));
-	flExtentLow[1] = view_as<float>(g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_Y1));
-	flExtentHigh[0] = view_as<float>(g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_X2));
-	flExtentHigh[1] = view_as<float>(g_hNavMeshAreas.Get(iAreaIndex, NavMeshArea_Y2));
-	
-	int loX = NavMeshWorldToGridX(flExtentLow[0]);
-	int loY = NavMeshWorldToGridY(flExtentLow[1]);
-	int hiX = NavMeshWorldToGridX(flExtentHigh[0]);
-	int hiY = NavMeshWorldToGridY(flExtentHigh[1]);
-	
-	for (int y = loY; y <= hiY; ++y)
-	{
-		for (int x = loX; x <= hiX; ++x)
-		{
-			int iGridIndex = x + y * g_iNavMeshGridSizeX;
-			NavMeshGridAddAreaToList(iGridIndex, iAreaIndex);
-		}
-	}
-}
-
-// The following functions are stock functions associated with the navmesh grid. These
-// are safe to use after the grid has been finalized using NavMeshGridFinalize(), and
-// can be included in other stock functions as well.
-
+/**
+ *	Drops the decimals of the given float value and returns the value as an integer.
+ */
 stock int IntCast(float val)
 {
 	if (val < 0.0) return RoundToFloor(val);
 	return RoundToCeil(val);
 }
 
-stock int NavMeshWorldToGridX(float flWX)
+// Deprecated. Still being used by Native_NavMeshGridGetAreas, might remove later.
+stock ArrayStack NavMeshGridGetAreas(int x, int y)
 {
-	int x = IntCast((flWX - g_flNavMeshMinX) / g_flNavMeshGridCellSize);
-	
-	if (x < 0) x = 0;
-	else if (x >= g_iNavMeshGridSizeX) 
-	{
-		x = g_iNavMeshGridSizeX - 1;
-	}
-	
-	return x;
-}
-
-stock int NavMeshWorldToGridY(float flWY)
-{
-	new y = IntCast((flWY - g_flNavMeshMinY) / g_flNavMeshGridCellSize);
-	
-	if (y < 0) y = 0;
-	else if (y >= g_iNavMeshGridSizeY) 
-	{
-		y = g_iNavMeshGridSizeY - 1;
-	}
-	
-	return y;
-}
-
-stock ArrayStack NavMeshGridGetAreas(x, y)
-{
-	int iGridIndex = x + y * g_iNavMeshGridSizeX;
-	int iListStartIndex = g_hNavMeshGrid.Get(iGridIndex, NavMeshGrid_ListStartIndex);
-	int iListEndIndex = g_hNavMeshGrid.Get(iGridIndex, NavMeshGrid_ListEndIndex);
-	
-	if (iListStartIndex == -1) return null;
-	
 	ArrayStack hStack = new ArrayStack();
-	
-	for (int i = iListStartIndex; i <= iListEndIndex; i++)
+	ArrayList buffer = new ArrayList();
+	TheNavGrid.GetAreasEx(x, y, buffer);
+
+	for (int i = 0; i < buffer.Length; i++)
 	{
-		hStack.Push(g_hNavMeshGridLists.Get(i, NavMeshGridList_AreaIndex));
+		hStack.Push(buffer.Get(i));
 	}
 	
+	delete buffer;
+
 	return hStack;
-}
-
-stock void NavMeshGridGetAreasEx(int x, int y, ArrayList buffer)
-{
-	int gridIndex = x + y * g_iNavMeshGridSizeX;
-	int startIndex = g_hNavMeshGrid.Get(gridIndex, NavMeshGrid_ListStartIndex);
-	int endIndex = g_hNavMeshGrid.Get(gridIndex, NavMeshGrid_ListEndIndex);
-
-	if (startIndex == -1)
-		return;
-	
-	for (int i = startIndex; i <= endIndex; i++)
-	{
-		buffer.Push(g_hNavMeshGridLists.Get(i, NavMeshGridList_AreaIndex));
-	}
 }
 
 void NavMeshForAllAreasInRadius(const float pos[3], float radius, Handle functorPlugin, NavAreaFunctor functor, any functorData=0, bool useClosestPoint=false)
 {
-	if (g_hNavMeshGridLists.Length == 0) return;
+	if (TheNavGrid.IsEmpty()) return;
 
 	static int searchMarker = 0;
 
@@ -2628,9 +2624,9 @@ void NavMeshForAllAreasInRadius(const float pos[3], float radius, Handle functor
 
 	ArrayList areas = new ArrayList();
 
-	int originX = NavMeshWorldToGridX(pos[0]);
-	int originY = NavMeshWorldToGridY(pos[1]);
-	int shiftLimit = RoundToCeil(radius / g_flNavMeshGridCellSize);
+	int originX = TheNavGrid.WorldToGridX(pos[0]);
+	int originY = TheNavGrid.WorldToGridY(pos[1]);
+	int shiftLimit = RoundToCeil(radius / TheNavGrid.CellSize);
 
 	float areaCenter[3];
 	float radiusSq = radius*radius;
@@ -2639,11 +2635,11 @@ void NavMeshForAllAreasInRadius(const float pos[3], float radius, Handle functor
 	{
 		for (int x = (originX - shift); x <= (originX + shift); x++)
 		{
-			if (x < 0 || x >= g_iNavMeshGridSizeX) continue;
+			if (x < 0 || x >= TheNavGrid.SizeX) continue;
 			
 			for (int y = (originY - shift); y <= (originY + shift); y++)
 			{
-				if (y < 0 || y >= g_iNavMeshGridSizeY) continue;
+				if (y < 0 || y >= TheNavGrid.SizeY) continue;
 
 				if (x > (originX - shift) &&
 					x < (originX + shift) &&
@@ -2654,7 +2650,7 @@ void NavMeshForAllAreasInRadius(const float pos[3], float radius, Handle functor
 				}
 
 				areas.Clear();
-				NavMeshGridGetAreasEx(x, y, areas);
+				TheNavGrid.GetAreasEx(x, y, areas);
 
 				for (int i = 0; i < areas.Length; i++)
 				{
@@ -2695,7 +2691,7 @@ void NavMeshForAllAreasInRadius(const float pos[3], float radius, Handle functor
 
 int NavMeshGetNearestArea(const float flPos[3], bool bAnyZ=false, float flMaxDist=10000.0, bool bCheckLOS=false, bool bCheckGround=true, bool bAllowBlocked=false, int iTeam=-2)
 {
-	if (g_hNavMeshGridLists.Length == 0) return -1;
+	if (TheNavGrid.IsEmpty()) return -1;
 	
 	int iClosestAreaIndex = -1;
 	float flClosestDistSq = flMaxDist * flMaxDist;
@@ -2732,10 +2728,10 @@ int NavMeshGetNearestArea(const float flPos[3], bool bAnyZ=false, float flMaxDis
 	iSearchMarker++;
 	if (iSearchMarker == 0) iSearchMarker++;
 	
-	int iOriginX = NavMeshWorldToGridX(flPos[0]);
-	int iOriginY = NavMeshWorldToGridY(flPos[1]);
+	int iOriginX = TheNavGrid.WorldToGridX(flPos[0]);
+	int iOriginY = TheNavGrid.WorldToGridY(flPos[1]);
 	
-	int iShiftLimit = RoundToCeil(flMaxDist / g_flNavMeshGridCellSize);
+	int iShiftLimit = RoundToCeil(flMaxDist / TheNavGrid.CellSize);
 	
 	ArrayList areas = new ArrayList();
 
@@ -2743,11 +2739,11 @@ int NavMeshGetNearestArea(const float flPos[3], bool bAnyZ=false, float flMaxDis
 	{
 		for (int x = (iOriginX - iShift); x <= (iOriginX + iShift); ++x)
 		{
-			if (x < 0 || x >= g_iNavMeshGridSizeX) continue;
+			if (x < 0 || x >= TheNavGrid.SizeX) continue;
 			
 			for (int y = (iOriginY - iShift); y <= (iOriginY + iShift); ++y)
 			{
-				if (y < 0 || y >= g_iNavMeshGridSizeY) continue;
+				if (y < 0 || y >= TheNavGrid.SizeY) continue;
 				
 				if (x > (iOriginX - iShift) &&
 					x < (iOriginX + iShift) &&
@@ -2758,7 +2754,7 @@ int NavMeshGetNearestArea(const float flPos[3], bool bAnyZ=false, float flMaxDis
 				}
 				
 				areas.Clear();
-				NavMeshGridGetAreasEx(x, y, areas);
+				TheNavGrid.GetAreasEx(x, y, areas);
 
 				for (int i = 0; i < areas.Length; i++)
 				{
@@ -3645,11 +3641,17 @@ stock int NavMeshGetArea(const float flPos[3], float flBeneathLimit=120.0)
 {
 	if (!g_bNavMeshBuilt) return -1;
 	
-	int x = NavMeshWorldToGridX(flPos[0]);
-	int y = NavMeshWorldToGridY(flPos[1]);
+	int x = TheNavGrid.WorldToGridX(flPos[0]);
+	int y = TheNavGrid.WorldToGridY(flPos[1]);
 	
-	ArrayStack hAreas = NavMeshGridGetAreas(x, y);
-	
+	ArrayList areas = new ArrayList();
+	TheNavGrid.GetAreasEx(x, y, areas);
+	if (areas.Length == 0)
+	{
+		delete areas;
+		return -1;
+	}
+
 	int iUseAreaIndex = -1;
 	float flUseZ = -99999999.9;
 	float flTestPos[3];
@@ -3657,32 +3659,27 @@ stock int NavMeshGetArea(const float flPos[3], float flBeneathLimit=120.0)
 	flTestPos[1] = flPos[1];
 	flTestPos[2] = flPos[2] + 5.0;
 	
-	if (hAreas != null)
+	for (int i = 0; i < areas.Length; i++)
 	{
-		while (!hAreas.Empty)
+		int areaIndex = areas.Get(i);
+		if (NavMeshAreaIsOverlappingPoint(areaIndex, flTestPos, 0.0))
 		{
-			int iAreaIndex = -1;
-			PopStackCell(hAreas, iAreaIndex);
+			float z = NavMeshAreaGetZ(areaIndex, flTestPos);
 			
-			if (NavMeshAreaIsOverlappingPoint(iAreaIndex, flTestPos, 0.0))
+			if (z > flTestPos[2]) continue;
+			
+			if (z < flPos[2] - flBeneathLimit) continue;
+			
+			if (z > flUseZ)
 			{
-				float z = NavMeshAreaGetZ(iAreaIndex, flTestPos);
-				
-				if (z > flTestPos[2]) continue;
-				
-				if (z < flPos[2] - flBeneathLimit) continue;
-				
-				if (z > flUseZ)
-				{
-					iUseAreaIndex = iAreaIndex;
-					flUseZ = z;
-				}
+				iUseAreaIndex = areaIndex;
+				flUseZ = z;
 			}
 		}
-		
-		delete hAreas;
 	}
-	
+
+	delete areas;
+
 	return iUseAreaIndex;
 }
 
@@ -3779,10 +3776,22 @@ stock ArrayStack NavSpotEncounterGetSpots(int spotEncounterIndex)
 	int endIndex = g_hNavMeshAreaEncounterPaths.Get(spotEncounterIndex, NavMeshEncounterPath_SpotsEndIndex);
 	for (int i = startIndex; i <= endIndex; i++)
 	{
-		buffer.Push(i);
+		buffer.Push( g_hNavMeshAreaEncounterSpots.Get(i, NavMeshEncounterSpot_HidingSpotIndex ) );
 	}
 	
 	return buffer;
+}
+
+stock void NavSpotEncounterGetSpotsEx(int spotEncounterIndex, ArrayList buffer)
+{
+	int startIndex = g_hNavMeshAreaEncounterPaths.Get(spotEncounterIndex, NavMeshEncounterPath_SpotsStartIndex);
+	if (startIndex == -1) return;
+	
+	int endIndex = g_hNavMeshAreaEncounterPaths.Get(spotEncounterIndex, NavMeshEncounterPath_SpotsEndIndex);
+	for (int i = startIndex; i <= endIndex; i++)
+	{
+		buffer.Push( g_hNavMeshAreaEncounterSpots.Get(i, NavMeshEncounterSpot_HidingSpotIndex ) );
+	}
 }
 
 stock int NavSpotOrderGetHidingSpot(int spotOrderIndex)
@@ -4088,12 +4097,12 @@ public int Native_NavMeshFindHidingSpotByID(Handle plugin, int numParams)
 
 public int Native_NavMeshWorldToGridX(Handle plugin, int numParams)
 {
-	return NavMeshWorldToGridX(view_as<float>(GetNativeCell(1)));
+	return TheNavGrid.WorldToGridX(view_as<float>(GetNativeCell(1)));
 }
 
 public int Native_NavMeshWorldToGridY(Handle plugin, int numParams)
 {
-	return NavMeshWorldToGridY(view_as<float>(GetNativeCell(1)));
+	return TheNavGrid.WorldToGridY(view_as<float>(GetNativeCell(1)));
 }
 
 public int Native_NavMeshGridGetAreas(Handle plugin, int numParams)
@@ -4116,12 +4125,12 @@ public int Native_NavMeshGridGetAreas(Handle plugin, int numParams)
 
 public int Native_NavMeshGetGridSizeX(Handle plugin, int numParams)
 {
-	return g_iNavMeshGridSizeX;
+	return TheNavGrid.SizeX;
 }
 
 public int Native_NavMeshGetGridSizeY(Handle plugin, int numParams)
 {
-	return g_iNavMeshGridSizeY;
+	return TheNavGrid.SizeY;
 }
 
 public int Native_NavMeshAreaGetClosestPointOnArea(Handle plugin, int numParams)
@@ -4582,18 +4591,8 @@ public int Native_NavSpotEncounterGetToDirection(Handle plugin, int numParams)
 
 public int Native_NavSpotEncounterGetSpots(Handle plugin, int numParams)
 {
-	ArrayStack buffer = view_as<ArrayStack>(GetNativeCell(2));
-	ArrayStack dummy = NavSpotEncounterGetSpots(GetNativeCell(1));
-	if (dummy != null)
-	{
-		while (!dummy.Empty)
-		{
-			int val;
-			PopStackCell(dummy, val);
-			buffer.Push(val);
-		}
-		delete dummy;
-	}
+	ArrayList buffer = view_as<ArrayList>(GetNativeCell(2));
+	NavSpotEncounterGetSpotsEx(GetNativeCell(1), buffer);
 }
 
 public int Native_NavSpotOrderGetHidingSpot(Handle plugin, int numParams)

@@ -709,14 +709,6 @@ enum
 	NAV_HIDING_SPOT_EXPOSED = 0x08
 }
 
-native int NavHidingSpot_GetID(int hidingSpotIndex);
-
-native int NavHidingSpot_GetFlags(int hidingSpotIndex);
-
-native void NavHidingSpot_GetPosition(int hidingSpotIndex, float buffer[3]);
-
-native CNavArea NavHidingSpot_GetArea(int hidingSpotIndex);
-
 methodmap HidingSpot
 {
 	public HidingSpot( int index )
@@ -731,18 +723,20 @@ methodmap HidingSpot
 	
 	property int ID
 	{
-		public get() { return NavHidingSpot_GetID( this.Index ); }
+		public native get();
 	}
 	
 	property int Flags
 	{
-		public get() { return NavHidingSpot_GetFlags( this.Index ); }
+		public native get();
+	}
+
+	property CNavArea Area
+	{
+		public native get();
 	}
 	
-	public void GetPosition( float buffer[3] )
-	{
-		NavHidingSpot_GetPosition( this.Index, buffer );
-	}
+	public native void GetPosition( float buffer[3] );
 	
 	public bool HasGoodCover()
 	{
@@ -764,32 +758,11 @@ methodmap HidingSpot
 		return this.Flags & NAV_HIDING_SPOT_EXPOSED ? true : false;
 	}
 	
-	public CNavArea GetArea()
-	{
-		return NavHidingSpot_GetArea(this.Index);
-	}
+	#pragma deprecated Use HidingSpot.Area instead.
+	public native CNavArea GetArea();
 }
 
-
 // CNavLadder
-
-native float NavMeshLadder_GetLength(int ladderIndex);
-
-native float NavMeshLadder_GetWidth(int ladderIndex);
-
-native CNavArea NavMeshLadder_GetTopForwardArea(int ladderIndex);
-
-native CNavArea NavMeshLadder_GetTopLeftArea(int ladderIndex);
-
-native CNavArea NavMeshLadder_GetTopRightArea(int ladderIndex);
-
-native CNavArea NavMeshLadder_GetTopBehindArea(int ladderIndex);
-
-native CNavArea NavMeshLadder_GetBottomArea(int ladderIndex);
-
-native void NavMeshLadder_GetTop(int ladderIndex, float buffer[3]);
-
-native void NavMeshLadder_GetBottom(int ladderIndex, float buffer[3]);
 
 methodmap CNavLadder
 {
@@ -805,62 +778,46 @@ methodmap CNavLadder
 	
 	property float Length
 	{
-		public get() { return NavMeshLadder_GetLength(this.Index); }
+		public native get();
 	}
 	
 	property float Width
 	{
-		public get() { return NavMeshLadder_GetWidth(this.Index); }
+		public native get();
 	}
 	
 	property CNavArea TopForwardArea
 	{
-		public get() { return NavMeshLadder_GetTopForwardArea(this.Index); }
+		public native get();
 	}
 	
 	property CNavArea TopLeftArea
 	{
-		public get() { return NavMeshLadder_GetTopLeftArea(this.Index); }
+		public native get();
 	}
 	
 	property CNavArea TopRightArea
 	{
-		public get() { return NavMeshLadder_GetTopRightArea(this.Index); }
+		public native get();
 	}
 	
 	property CNavArea TopBehindArea
 	{
-		public get() { return NavMeshLadder_GetTopBehindArea(this.Index); }
+		public native get();
 	}
 	
 	property CNavArea BottomArea
 	{
-		public get() { return NavMeshLadder_GetBottomArea(this.Index); }
+		public native get();
 	}
 	
-	public void GetTop( float buffer[3] )
-	{
-		NavMeshLadder_GetTop(this.Index, buffer);
-	}
+	public native void GetTop( float buffer[3] );
 	
-	public void GetBottom( float buffer[3] )
-	{
-		NavMeshLadder_GetBottom(this.Index, buffer);
-	}
+	public native void GetBottom( float buffer[3] );
 }
 
 
 // SpotEncounter
-
-native CNavArea NavSpotEncounter_GetFrom(int spotEncounterIndex);
-
-native int NavSpotEncounter_GetFromDirection(int spotEncounterIndex);
-
-native CNavArea NavSpotEncounter_GetTo(int spotEncounterIndex);
-
-native int NavSpotEncounter_GetToDirection(int spotEncounterIndex);
-
-native void NavSpotEncounter_GetSpots(int spotEncounterIndex, ArrayStack buffer);
 
 methodmap SpotEncounter
 {
@@ -876,36 +833,28 @@ methodmap SpotEncounter
 	
 	property CNavArea From
 	{
-		public get() { return NavSpotEncounter_GetFrom(this.Index); }
+		public native get();
 	}
 	
 	property int FromDirection
 	{
-		public get() { return NavSpotEncounter_GetFromDirection(this.Index); }
+		public native get();
 	}
 	
 	property CNavArea To
 	{
-		public get() { return NavSpotEncounter_GetTo(this.Index); }
+		public native get();
 	}
 	
 	property int ToDirection
 	{
-		public get() { return NavSpotEncounter_GetToDirection(this.Index); }
+		public native get();
 	}
 	
-	public void GetSpots( ArrayStack buffer )
-	{
-		NavSpotEncounter_GetSpots(this.Index, buffer);
-	}
+	public native void GetSpots( ArrayList buffer );
 }
 
-
 // SpotOrder
-
-native HidingSpot NavSpotOrder_GetHidingSpot(int spotOrderIndex);
-
-native int NavSpotOrder_GetParametricDistance(int spotOrderIndex);
 
 methodmap SpotOrder
 {
@@ -921,17 +870,16 @@ methodmap SpotOrder
 	
 	property HidingSpot HidingSpot
 	{
-		public get() { return NavSpotOrder_GetHidingSpot(this.Index); }
+		public native get();
 	}
 	
 	property int ParametricDistance
 	{
-		public get() { return NavSpotOrder_GetParametricDistance(this.Index); }
+		public native get();
 	}
 }
 
-
-// Shortest-path cost function for NavMesh_BuildPath.
+// Shortest-path cost function for CNavMesh.BuildPath()
 public int NavMeshShortestPathCost(CNavArea area, CNavArea from, CNavLadder ladder, any data)
 {
 	if (from == INVALID_NAV_AREA)
@@ -964,6 +912,7 @@ public int NavMeshShortestPathCost(CNavArea area, CNavArea from, CNavLadder ladd
 
 // stocks
 
+// https://github.com/ValveSoftware/source-sdk-2013/blob/master/mp/src/game/server/nav.h#L409
 stock bool IsEntityWalkable(int iEnt, int iFlags)
 {
 	char sClass[64];
@@ -1211,6 +1160,67 @@ native float NavMeshArea_GetLightIntensity(int areaIndex, const float pos[3]);
 
 #pragma deprecated Use CNavArea.GetAdjacentAreas() instead.
 native void NavMeshArea_GetAdjacentList(ArrayStack buffer, int areaIndex, int dir);
+
+#pragma deprecated Use HidingSpot.ID instead.
+native int NavHidingSpot_GetID(int hidingSpotIndex);
+
+#pragma deprecated Use HidingSpot.Flags instead.
+native int NavHidingSpot_GetFlags(int hidingSpotIndex);
+
+#pragma deprecated Use HidingSpot.GetPosition() instead.
+native void NavHidingSpot_GetPosition(int hidingSpotIndex, float buffer[3]);
+
+#pragma deprecated Use HidingSpot.Area instead.
+native CNavArea NavHidingSpot_GetArea(int hidingSpotIndex);
+
+#pragma deprecated Use CNavLadder.Length instead.
+native float NavMeshLadder_GetLength(int ladderIndex);
+
+#pragma deprecated Use CNavLadder.Width instead.
+native float NavMeshLadder_GetWidth(int ladderIndex);
+
+#pragma deprecated Use CNavLadder.TopForwardArea instead.
+native CNavArea NavMeshLadder_GetTopForwardArea(int ladderIndex);
+
+#pragma deprecated Use CNavLadder.TopLeftArea instead.
+native CNavArea NavMeshLadder_GetTopLeftArea(int ladderIndex);
+
+#pragma deprecated Use CNavLadder.TopRightArea instead.
+native CNavArea NavMeshLadder_GetTopRightArea(int ladderIndex);
+
+#pragma deprecated Use CNavLadder.TopBehindArea instead.
+native CNavArea NavMeshLadder_GetTopBehindArea(int ladderIndex);
+
+#pragma deprecated Use CNavLadder.BottomArea instead.
+native CNavArea NavMeshLadder_GetBottomArea(int ladderIndex);
+
+#pragma deprecated Use CNavLadder.GetTop() instead.
+native void NavMeshLadder_GetTop(int ladderIndex, float buffer[3]);
+
+#pragma deprecated Use CNavLadder.GetBottom() instead.
+native void NavMeshLadder_GetBottom(int ladderIndex, float buffer[3]);
+
+#pragma deprecated Use SpotEncounter.From instead.
+native CNavArea NavSpotEncounter_GetFrom(int spotEncounterIndex);
+
+#pragma deprecated Use SpotEncounter.FromDirection instead.
+native int NavSpotEncounter_GetFromDirection(int spotEncounterIndex);
+
+#pragma deprecated Use SpotEncounter.To instead.
+native CNavArea NavSpotEncounter_GetTo(int spotEncounterIndex);
+
+#pragma deprecated Use SpotEncounter.ToDirection instead.
+native int NavSpotEncounter_GetToDirection(int spotEncounterIndex);
+
+#pragma deprecated Use SpotEncounter.GetSpots() instead.
+native void NavSpotEncounter_GetSpots(int spotEncounterIndex, ArrayList buffer);
+
+#pragma deprecated Use SpotOrder.HidingSpot instead.
+native HidingSpot NavSpotOrder_GetHidingSpot(int spotOrderIndex);
+
+#pragma deprecated Use SpotOrder.ParametricDistance instead.
+native int NavSpotOrder_GetParametricDistance(int spotOrderIndex);
+
 
 public SharedPlugin __pl_navmesh = 
 {
