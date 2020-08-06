@@ -217,6 +217,7 @@ methodmap CNavMesh
 	 *	@param	startPos			The starting position.
 	 *	@param	filterFunc			The function that (after checking if area's blocked/cost/height change) determines if search should 
 	 *								continue outward from the current area.
+	 *								WARNING: Do not use SearchSurroundingAreas() in this functor.
 	 *	@param	filterData			Optional. User-defined data to pass to filterFunc.
 	 *	@param	options				Optional. Flags that change behavior of this function. See SearchSurroundingAreasFlags_t.
 	 *	@param	maxRange			Optional. Maximum travel distance to search.
@@ -248,7 +249,8 @@ methodmap CNavMesh
 	 *	@param	pos					The position to calculate from.
 	 *	@param	radius				Maximum distance of search from position.
 	 *	@param	functor				Callback function that is called for every area searched. If the functor returns false,
-	 *								search will stop.
+	 *								search will stop. 
+	 *								WARNING: Do not use ForAllAreasInRadius() in this functor.
 	 *	@param	functorData			Optional. User-defined data for functor.
 	 *	@param	useClosestPoint		Optional. If true, will calculate distance using the closest point to pos on area.
 	 *								By default, distance is calculated from center of area (which may be problematic for large areas.)

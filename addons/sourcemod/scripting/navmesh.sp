@@ -643,30 +643,28 @@ stock int OppositeDirection(int iNavDirection)
 stock float NavMeshAreaComputeAdjacentConnectionHeightChange(int iAreaIndex, int iTargetAreaIndex)
 {
 	bool bFoundArea = false;
-	int iNavDirection;
-	
-	for (iNavDirection = 0; iNavDirection < NAV_DIR_COUNT; iNavDirection++)
+	ArrayList areas = new ArrayList();
+
+	int iNavDirection = 0;
+	for (; iNavDirection < NAV_DIR_COUNT; iNavDirection++)
 	{
-		ArrayStack hConnections = NavMeshAreaGetAdjacentList(iAreaIndex, iNavDirection);
-		if (hConnections == null) continue;
+		areas.Clear();
+		NavMeshAreaGetAdjacentListEx(iAreaIndex, iNavDirection, areas);
 		
-		while (!hConnections.Empty)
+		for (int i = 0; i < areas.Length; i++)
 		{
-			int iTempAreaIndex = -1;
-			PopStackCell(hConnections, iTempAreaIndex);
-			
-			if (iTempAreaIndex == iTargetAreaIndex)
+			if (areas.Get(i) == iTargetAreaIndex)
 			{
 				bFoundArea = true;
 				break;
 			}
 		}
 		
-		delete hConnections;
-		
 		if (bFoundArea) break;
 	}
 	
+	delete areas;
+
 	if (!bFoundArea) return 99999999.9;
 	
 	float flMyEdge[3];
@@ -938,6 +936,9 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 	
 	bool bHaveMaxPathLength = (flMaxPathLength != 0.0);
 	
+	ArrayList adjacentList = new ArrayList();
+	ArrayList ladderList = new ArrayList();
+
 	// Perform A* search.
 	while (!NavMeshAreaIsOpenListEmpty())
 	{
@@ -953,6 +954,7 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 			(iGoalAreaIndex == -1 && NavMeshAreaContains(iAreaIndex, flGoalPos)))
 		{
 			iClosestAreaIndex = iGoalAreaIndex;
+			delete adjacentList; delete ladderList;
 			return true;
 		}
 		
@@ -962,11 +964,11 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 		
 		int iSearchWhere = SEARCH_FLOOR;
 		int iSearchDir = NAV_DIR_NORTH;
-		
-		ArrayStack hFloorList = NavMeshAreaGetAdjacentList(iAreaIndex, iSearchDir);
+
+		adjacentList.Clear();
+		NavMeshAreaGetAdjacentListEx(iAreaIndex, iSearchDir, adjacentList);
 		
 		bool bLadderUp = true;
-		ArrayStack hLadderList = null;
 		int iLadderTopDir = 0;
 		
 		for (;;)
@@ -977,35 +979,34 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 			
 			if (iSearchWhere == SEARCH_FLOOR)
 			{
-				if (hFloorList == null || hFloorList.Empty)
+				if (adjacentList.Length == 0)
 				{
 					iSearchDir++;
-					if (hFloorList != null) delete hFloorList;
-					
 					if (iSearchDir == NAV_DIR_COUNT)
 					{
 						iSearchWhere = SEARCH_LADDERS;
-						
-						hLadderList = NavMeshAreaGetLadderList(iAreaIndex, NAV_LADDER_DIR_UP);
 						iLadderTopDir = 0;
+
+						ladderList.Clear();
+						NavMeshAreaGetLaddersEx(iAreaIndex, NAV_LADDER_DIR_UP, ladderList);
 					}
-					else
+					else 
 					{
-						hFloorList = NavMeshAreaGetAdjacentList(iAreaIndex, iSearchDir);
+						NavMeshAreaGetAdjacentListEx(iAreaIndex, iSearchDir, adjacentList);
 					}
 					
 					continue;
 				}
-				
-				PopStackCell(hFloorList, iNewAreaIndex);
+
+				iNewAreaIndex = adjacentList.Get(adjacentList.Length - 1);
+				adjacentList.Erase(adjacentList.Length - 1);
+
 				iNavTraverseHow = iSearchDir;
 			}
 			else if (iSearchWhere == SEARCH_LADDERS)
 			{
-				if (hLadderList == null || hLadderList.Empty)
+				if (ladderList.Length == 0)
 				{
-					if (hLadderList != null) delete hLadderList;
-					
 					if (!bLadderUp)
 					{
 						iLadderIndex = -1;
@@ -1014,13 +1015,14 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 					else
 					{
 						bLadderUp = false;
-						hLadderList = NavMeshAreaGetLadderList(iAreaIndex, NAV_LADDER_DIR_DOWN);
+						NavMeshAreaGetLaddersEx(iAreaIndex, NAV_LADDER_DIR_DOWN, ladderList);
 					}
 					
 					continue;
 				}
-				
-				PopStackCell(hLadderList, iLadderIndex);
+
+				iLadderIndex = ladderList.Get(ladderList.Length - 1);
+				ladderList.Erase(ladderList.Length - 1);
 				
 				if (bLadderUp)
 				{
@@ -1112,6 +1114,7 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 			if ((NavMeshAreaIsOpen(iNewAreaIndex) || NavMeshAreaIsClosed(iNewAreaIndex)) &&
 				g_hNavMeshAreas.Get(iNewAreaIndex, NavMeshArea_CostSoFar) <= iNewCostSoFar)
 			{
+				// Area was visited, but it already has a better path than mine.
 				continue;
 			}
 			else
@@ -1151,6 +1154,7 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 		NavMeshAreaAddToClosedList(iAreaIndex);
 	}
 	
+	delete adjacentList; delete ladderList;
 	return false;
 }
 
