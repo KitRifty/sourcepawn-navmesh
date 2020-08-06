@@ -157,6 +157,14 @@ methodmap CNavMesh
 	}
 
 	/**
+	 *	The amount of areas in the mesh.
+	 */
+	property int NavAreaCount
+	{
+		public native get();
+	}
+
+	/**
 	 *	Given a position, returns the height of the point from the nav mesh.
 	 *
 	 *	@param	pos			The position to check.

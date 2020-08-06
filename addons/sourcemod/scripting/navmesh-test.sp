@@ -43,6 +43,16 @@ public void OnMapStart()
 	g_flTrackNavAreaNextThink = 0.0;
 }
 
+void DrawNavAreaMarker( int client, CNavArea area, const int color[4], float duration=0.15 )
+{
+	float from[3], to[3];
+	area.GetCenter(from);
+	to[0] = from[0]; to[1] = from[1]; to[2] = from[2] + 64.0;
+
+	TE_SetupBeamPoints(from, to, g_iPathLaserModelIndex, g_iPathLaserModelIndex, 0, 30, duration, 1.0, 1.0, 0, 0.0, color, 1);
+	TE_SendToClient(client);
+}
+
 void DrawNavArea( int client, CNavArea area, const int color[4], float duration=0.15 ) 
 {
 	if ( !IsClientInGame(client) || IsFakeClient(client) || area == INVALID_NAV_AREA )
@@ -176,7 +186,7 @@ public void OnGameFrame()
 					
 					for (int i = 0; i < areas.Length; i++)
 					{
-						DrawNavArea(client, areas.Get(i), FocusedAreaColor);	
+						DrawNavAreaMarker(client, areas.Get(i), FocusedAreaColor);	
 					}
 
 					switch (engineVersion)

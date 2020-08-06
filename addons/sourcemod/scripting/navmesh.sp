@@ -419,6 +419,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("CNavMesh.Subversion.get", Native_CNavMeshGetSubVersion);
 	CreateNative("CNavMesh.SaveBSPSize.get", Native_CNavMeshGetSaveBSPSize);
 	CreateNative("CNavMesh.Analyzed.get", Native_CNavMeshGetAnalyzed);
+	CreateNative("CNavMesh.NavAreaCount.get", Native_CNavMeshGetNavAreaCount);
 	CreateNative("CNavMesh.GetGroundHeight", Native_CNavMeshGetGroundHeight);
 	CreateNative("CNavMesh.GetNavAreaByID", Native_CNavMeshFindAreaByID);
 	CreateNative("CNavMesh.GetNavArea", Native_CNavMeshGetArea);
@@ -1370,6 +1371,8 @@ int g_AreaVisibleAreasListStartIndex = 0;
 
 bool NavMeshLoad(const char[] sMapName)
 {
+	g_bNavMeshBuilt = false;
+
 	g_hNavMeshAreas.Clear();
 	g_hNavMeshAreaConnections.Clear();
 	g_hNavMeshAreaIncomingConnections.Clear();
@@ -2566,6 +2569,8 @@ void NavMeshDestroy()
 
 void NavMeshPostLoad(bool success)
 {
+	g_bNavMeshBuilt = success;
+
 	if (success)
 	{
 		switch (GetEngineVersion())
@@ -3869,6 +3874,11 @@ public int Native_CNavMeshGetAnalyzed(Handle plugin, int numParams)
 		return false;
 	
 	return g_bNavMeshAnalyzed;
+}
+
+public int Native_CNavMeshGetNavAreaCount(Handle plugin, int numParams)
+{
+	return g_hNavMeshAreas.Length;
 }
 
 public int Native_CNavMeshGetGroundHeight(Handle plugin, int numParams)
