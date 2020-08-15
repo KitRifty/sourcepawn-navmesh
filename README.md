@@ -25,31 +25,7 @@ If your game isn't listed here, there's a _slight_ chance it may still work, jus
 
 If your game doesn't natively support .NAV files, can you still use this plugin? [Yes.](../../wiki/Using-the-plugin-in-non-native-games)
 
-I don't plan on working on support for other games, but feel free to open a pull request if you wish to do so. Make use of the `NavMeshLoadCustomDataPreArea`, `NavMeshLoadCustomData`, and `NavMeshLoadAreaCustomData` functions as much as possible.
-
-## Reversing a game-specific .NAV format
-
-As a start, you may use [VTable Dumper](https://asherkin.github.io/vtable/) and check for any subclasses of `CNavArea` or `CNavMesh`, and checking if the subclass overrides the following functions:
-
-```c++
-class CNavMesh
-{
-  virtual NavErrorType Load( void );
-  virtual void LoadCustomData( CUtlBuffer &fileBuffer, unsigned int subVersion ) { }
-  virtual void LoadCustomDataPreArea( CUtlBuffer &fileBuffer, unsigned int subVersion ) { }
-}
-
-class CNavArea
-{
-  virtual NavErrorType Load( CUtlBuffer &fileBuffer, unsigned int version, unsigned int subVersion );
-}
-```
-
-If it's the case that some of those functions are being overridden, then it'll give you a good starting point on where to look when disassembling a Linux server binary. If you do stumble upon custom data being loaded in a function, take note of all calls to `CUtlBuffer::GetType()` and `CUtlBuffer::Scanf()`. The `CUtlBuffer::Get<Type>()` functions are [inlined](https://github.com/ValveSoftware/source-sdk-2013/blob/master/sp/src/public/tier1/utlbuffer.h#L669), but it shouldn't be too hard to deduce which function is being called.
-
-If there aren't any subclasses, then you might not have to do anything and there's a chance that the plugin will work as is.
-
-If you want to disassemble a Windows server binary, then God help you.
+Want to reverse a .NAV format for a game? [Read here.](../../wiki/Reversing-a-.NAV-File-Format) 
 
 ## Current Dev. Goals
 
