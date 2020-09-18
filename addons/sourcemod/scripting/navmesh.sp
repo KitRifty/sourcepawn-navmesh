@@ -2042,7 +2042,7 @@ bool NavMeshLoad(const char[] sMapName)
 	
 	if (g_hNavMeshAreaEncounterSpots.Length > 0)
 	{
-		for (int iIndex = 0, iSize = g_hNavMeshAreaEncounterPaths.Length; iIndex < iSize; iIndex++)
+		for (int iIndex = 0, iSize = g_hNavMeshAreaEncounterSpots.Length; iIndex < iSize; iIndex++)
 		{
 			int id = g_hNavMeshAreaEncounterSpots.Get(iIndex, NavMeshEncounterSpot_HidingSpotIndex);
 			g_hNavMeshAreaEncounterSpots.Set(iIndex, NavMeshFindHidingSpotByID(id), NavMeshEncounterSpot_HidingSpotIndex);
