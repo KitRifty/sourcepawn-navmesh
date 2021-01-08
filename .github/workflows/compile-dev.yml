@@ -1,0 +1,43 @@
+name: Compile (Dev)
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - "**.sp"
+      - "**.inc"
+  pull_request:
+    branches: [dev]
+    paths:
+      - "**.sp"
+      - "**.inc"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+
+      - name: SourceMod
+        run: |
+          wget -q "http://www.sourcemod.net/latest.php?version=1.10&os=linux" -O sourcemod.tar.gz
+          tar -xf sourcemod.tar.gz
+      - name: Compile
+        working-directory: ./addons/sourcemod/scripting
+        run: |
+          ./spcomp navmesh.sp -o navmesh.smx
+      - name: Compile Test Plugin
+        working-directory: ./addons/sourcemod/scripting
+        run: |
+          ./spcomp navmesh-test.sp -o navmesh-test.smx
+      - uses: actions/upload-artifact@v2
+        with:
+          name: navmesh-${{github.sha}}
+          path: ./addons/sourcemod/scripting/navmesh.smx
+      - uses: actions/upload-artifact@v2
+        with:
+          name: navmesh-test-${{github.sha}}
+          path: ./addons/sourcemod/scripting/navmesh-test.smx
