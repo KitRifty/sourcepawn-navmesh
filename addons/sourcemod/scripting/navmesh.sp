@@ -6,7 +6,7 @@
 #include <profiler>
 #include <navmesh>
 
-#define PLUGIN_VERSION "1.0.6"
+#define PLUGIN_VERSION "1.0.6b"
 
 public Plugin myinfo = 
 {
