@@ -1,4 +1,5 @@
 # SourcePawn NavMesh
+![](https://github.com/KitRifty/sourcepawn-navmesh/actions/workflows/compile.yml/badge.svg?branch=master)
 
 This is basically a SourceMod plugin that can parse .NAV files and make data out of it that
 SourceMod plugins can read from. This plugin by itself doesn't do anything other than read
