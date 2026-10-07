@@ -255,6 +255,8 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	
 	CreateNative("NavMesh_FindAreaByID", Native_NavMeshFindAreaByID);
 	CreateNative("NavMesh_GetArea", Native_NavMeshGetArea);
+	CreateNative("NavMesh_GetAreaCount", Native_NavMeshGetAreaCount);
+
 	CreateNative("NavMesh_GetNearestArea", Native_NavMeshGetNearestArea);
 	
 	CreateNative("NavMesh_FindHidingSpotByID", Native_NavMeshFindHidingSpotByID);
@@ -3645,6 +3647,12 @@ public int Native_NavMeshBuildPath(Handle plugin, int numParams)
 		
 	SetNativeCellRef(6, iClosestIndex);
 	return bResult;
+}
+
+public int Native_NavMeshGetAreaCount(Handle plugin, int numParams) {
+	if (!g_bNavMeshBuilt) return 0;
+
+    return g_hNavMeshAreas.Length;
 }
 
 public int Native_NavMeshGetArea(Handle plugin, int numParams)
