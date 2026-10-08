@@ -552,7 +552,7 @@ bool NavMeshBuildPath(int iStartAreaIndex,
 	int iGoalAreaIndex,
 	const float flGoalPos[3],
 	Handle hCostFunctionPlugin,
-	NavPathCostFunctor iCostFunction,
+	Function iCostFunction,
 	any iCostData=0,
 	int &iClosestAreaIndex=-1,
 	float flMaxPathLength=0.0,
@@ -3639,7 +3639,7 @@ public int Native_NavMeshBuildPath(Handle plugin, int numParams)
 		view_as<int>(GetNativeCell(2)), 
 		flGoalPos,
 		plugin,
-		view_as<NavPathCostFunctor>(GetNativeFunction(4)),
+		GetNativeFunction(4),
 		GetNativeCell(5),
 		iClosestIndex,
 		view_as<float>(GetNativeCell(7)),
@@ -3802,7 +3802,7 @@ public int Native_NavMeshAreaGetAdjacentList(Handle plugin, int numParams)
 	}
 }
 
-public int Native_NavMeshAreaGetAdjacentAreas(Handle plugin, int numParams)
+public void Native_NavMeshAreaGetAdjacentAreas(Handle plugin, int numParams)
 {
 	int iAreaIndex = GetNativeCell(1);
 	int iNavDirection = GetNativeCell(2);
@@ -3826,7 +3826,7 @@ public int Native_NavMeshAreaGetAdjacentAreas(Handle plugin, int numParams)
 	}
 }
 
-public int Native_NavMeshAreaGetIncomingConnections(Handle plugin, int numParams)
+public void Native_NavMeshAreaGetIncomingConnections(Handle plugin, int numParams)
 {
 	int iAreaIndex = GetNativeCell(1);
 	int iNavDirection = GetNativeCell(2);
@@ -4199,7 +4199,7 @@ public int Native_TFNavAreaGetAttributeFlags(Handle plugin, int numParams)
 	return g_hNavMeshAreas.Get(GetNativeCell(1), TFNavArea_AttributeFlags);
 }
 
-public int Native_CSNavAreaGetApproachInfoList(Handle plugin, int numParams)
+public void Native_CSNavAreaGetApproachInfoList(Handle plugin, int numParams)
 {
 	if (!g_bNavMeshBuilt) return;
 
@@ -4226,7 +4226,7 @@ public int Native_TerrorNavMeshGetZombiePopulation(Handle plugin, int numParams)
 
 public int Native_TerrorNavMeshGetNavMaxViewDistance(Handle plugin, int numParams)
 {
-	return g_TerrorNavMeshNavMaxViewDistance;
+	return view_as<int>(g_TerrorNavMeshNavMaxViewDistance);
 }
 
 public int Native_TerrorNavAreaGetSpawnAttributes(Handle plugin, int numParams)
