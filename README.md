@@ -11,7 +11,7 @@ https://github.com/AnthonyIacono/War3SourceV2/tree/master/Nav
 
 ## Requirements
 
-- SourceMod 1.10+
+- SourceMod 1.12+
 
 ## Game Compatibility
 
