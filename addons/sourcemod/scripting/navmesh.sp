@@ -3652,7 +3652,7 @@ public int Native_NavMeshBuildPath(Handle plugin, int numParams)
 public int Native_NavMeshGetAreaCount(Handle plugin, int numParams) {
 	if (!g_bNavMeshBuilt) return 0;
 
-    return g_hNavMeshAreas.Length;
+	return g_hNavMeshAreas.Length;
 }
 
 public int Native_NavMeshGetArea(Handle plugin, int numParams)
