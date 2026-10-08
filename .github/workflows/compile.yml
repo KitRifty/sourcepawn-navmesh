@@ -6,6 +6,7 @@ on:
     paths:
       - "**.sp"
       - "**.inc"
+      - "**.yml"
     tags:
       - v*
   pull_request:
@@ -13,6 +14,8 @@ on:
     paths:
       - "**.sp"
       - "**.inc"
+      - "**.yml"
+  workflow_dispatch:
 
 jobs:
   build:
