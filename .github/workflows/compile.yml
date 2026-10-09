@@ -6,6 +6,7 @@ on:
     paths:
       - "**.sp"
       - "**.inc"
+      - "**.yml"
     tags:
       - v*
   pull_request:
@@ -13,19 +14,21 @@ on:
     paths:
       - "**.sp"
       - "**.inc"
+      - "**.yml"
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
         with:
           submodules: true
 
       - name: SourceMod
         run: |
-          wget -q "http://www.sourcemod.net/latest.php?version=1.10&os=linux" -O sourcemod.tar.gz
+          wget -q "http://www.sourcemod.net/latest.php?version=1.12&os=linux" -O sourcemod.tar.gz
           tar -xf sourcemod.tar.gz
       - name: Compile
         working-directory: ./addons/sourcemod/scripting
@@ -36,7 +39,7 @@ jobs:
         run: |
           ./spcomp navmesh-test.sp -o navmesh-test.smx
       - name: Release
-        uses: softprops/action-gh-release@v0.1.5
+        uses: softprops/action-gh-release@v3
         if: startsWith(github.ref, 'refs/tags/')
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
