@@ -103,6 +103,8 @@ native CNavArea NavMesh_FindAreaByID( int areaID );
 
 native CNavArea NavMesh_GetArea(const float pos[3], float beneathLimit=120.0);
 
+native int NavMesh_GetAreaCount();
+
 native CNavArea NavMesh_GetNearestArea(const float pos[3], bool anyZ=false, float maxDist=10000.0, bool checkLOS=false, bool checkGround=true, int team=-2);
 
 native HidingSpot NavMesh_FindHidingSpotByID(int hidingSpotID);
